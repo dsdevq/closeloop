@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey
+from sqlalchemy import Column, Float, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -8,11 +8,12 @@ class Contact(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    email = Column(String)
+    email = Column(String, unique=True)
     company = Column(String)
     title = Column(String)
     phone = Column(String)
     source = Column(String)  # referral/inbound/outbound/event/other
+    lead_score = Column(Float, nullable=False, default=0.0)
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
 
@@ -24,18 +25,20 @@ class Deal(Base):
     __tablename__ = "deals"
 
     id = Column(Integer, primary_key=True, index=True)
-    contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=False)
+    contact_id = Column(Integer, ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False)
     title = Column(String, nullable=False)
-    amount = Column(Integer, nullable=False, default=0)  # cents
+    amount = Column(Integer, nullable=False, default=0)  # cents (full PRD field, kept for M3+)
     currency = Column(String, nullable=False, default="USD")
     stage = Column(String, nullable=False, default="lead")  # lead/qualified/proposal/negotiation/won/lost
+    value = Column(Float, nullable=False, default=0.0)
+    probability = Column(Float, nullable=False, default=0.0)
     expected_close_date = Column(String)
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
     closed_at = Column(String)
 
     contact = relationship("Contact", back_populates="deals")
-    stage_transitions = relationship("StageTransition", back_populates="deal")
+    stage_transitions = relationship("StageTransition", back_populates="deal", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="deal")
 
 
@@ -43,7 +46,7 @@ class StageTransition(Base):
     __tablename__ = "stage_transitions"
 
     id = Column(Integer, primary_key=True, index=True)
-    deal_id = Column(Integer, ForeignKey("deals.id"), nullable=False)
+    deal_id = Column(Integer, ForeignKey("deals.id", ondelete="CASCADE"), nullable=False)
     from_stage = Column(String)
     to_stage = Column(String, nullable=False)
     occurred_at = Column(String, nullable=False)
