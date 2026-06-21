@@ -5,9 +5,12 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 
 import app.models  # noqa: F401 — registers models on Base before create_all
 from app.database import Base, engine
+from app.routers.contacts import router as contacts_router
+from app.routers.deals import router as deals_router
 from app.routers.health import router as health_router
 
 logging.basicConfig(level=logging.INFO)
@@ -43,4 +46,9 @@ async def _json_logging(request: Request, call_next):
     return response
 
 
+# API routers must be registered before the static files catch-all
 app.include_router(health_router, prefix="")
+app.include_router(contacts_router)
+app.include_router(deals_router)
+
+app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloseLoop CRM</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    nav {
+      background: #1a1a2e;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      padding: 0 1.5rem;
+      height: 52px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    }
+    nav h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: .03em; white-space: nowrap; }
+    .tabs { display: flex; gap: .25rem; }
+    .tab {
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,.65);
+      cursor: pointer;
+      font-size: .875rem;
+      padding: .4rem .9rem;
+      border-radius: 6px;
+      transition: background .15s, color .15s;
+    }
+    .tab:hover { background: rgba(255,255,255,.1); color: #fff; }
+    .tab.active { background: rgba(255,255,255,.18); color: #fff; font-weight: 600; }
+
+    /* ── Views ── */
+    .view { display: none; padding: 1.25rem 1.5rem; }
+    .view.active { display: block; }
+
+    /* ── Pipeline toolbar ── */
+    .pipeline-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .pipeline-toolbar h2 { font-size: 1rem; font-weight: 600; }
+
+    /* ── Kanban ── */
+    .kanban {
+      display: flex;
+      gap: .875rem;
+      overflow-x: auto;
+      padding-bottom: .5rem;
+      min-height: calc(100vh - 140px);
+    }
+
+    .column {
+      background: #e4e7ec;
+      border-radius: 10px;
+      min-width: 220px;
+      flex: 1 1 220px;
+      max-width: 280px;
+      display: flex;
+      flex-direction: column;
+      padding: .75rem .625rem;
+    }
+    .column-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: .625rem;
+      padding: 0 .125rem;
+    }
+    .column-title {
+      font-size: .8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: #555;
+    }
+    .column-count {
+      background: #c5cad4;
+      border-radius: 10px;
+      font-size: .7rem;
+      font-weight: 600;
+      padding: 1px 7px;
+      color: #444;
+    }
+
+    .cards { flex: 1; min-height: 60px; display: flex; flex-direction: column; gap: .5rem; }
+    .cards.drag-over { background: rgba(99,102,241,.1); border-radius: 8px; }
+
+    /* ── Deal card ── */
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      padding: .65rem .75rem;
+      cursor: grab;
+      box-shadow: 0 1px 3px rgba(0,0,0,.1);
+      transition: box-shadow .15s, transform .1s;
+      user-select: none;
+    }
+    .card:active { cursor: grabbing; }
+    .card.dragging { opacity: .5; transform: rotate(2deg); box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+    .card-title { font-size: .875rem; font-weight: 600; margin-bottom: .3rem; }
+    .card-meta { font-size: .75rem; color: #666; display: flex; justify-content: space-between; }
+    .card-contact { font-size: .75rem; color: #888; margin-bottom: .2rem; }
+
+    /* ── Stage colours ── */
+    .stage-lead .column-title { color: #6366f1; }
+    .stage-qualified .column-title { color: #0ea5e9; }
+    .stage-proposal .column-title { color: #f59e0b; }
+    .stage-negotiation .column-title { color: #f97316; }
+    .stage-won .column-title { color: #22c55e; }
+    .stage-lost .column-title { color: #ef4444; }
+
+    /* ── Buttons ── */
+    .btn {
+      background: #6366f1;
+      border: none;
+      border-radius: 7px;
+      color: #fff;
+      cursor: pointer;
+      font-size: .82rem;
+      font-weight: 600;
+      padding: .45rem .9rem;
+      transition: background .15s;
+    }
+    .btn:hover { background: #4f46e5; }
+    .btn-sm {
+      background: transparent;
+      border: 1.5px dashed #aaa;
+      border-radius: 7px;
+      color: #666;
+      cursor: pointer;
+      font-size: .78rem;
+      margin-top: .375rem;
+      padding: .35rem;
+      text-align: center;
+      transition: border-color .15s, color .15s;
+      width: 100%;
+    }
+    .btn-sm:hover { border-color: #6366f1; color: #6366f1; }
+
+    /* ── Contacts view ── */
+    .contacts-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .contacts-toolbar h2 { font-size: 1rem; font-weight: 600; }
+
+    table { border-collapse: collapse; width: 100%; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    thead { background: #f8f9fb; }
+    th { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #555; padding: .65rem 1rem; text-align: left; border-bottom: 1px solid #e8eaee; }
+    td { font-size: .85rem; padding: .65rem 1rem; border-bottom: 1px solid #f0f2f5; color: #333; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafbff; }
+    .score-badge { background: #e0f2fe; border-radius: 12px; color: #0369a1; font-size: .72rem; font-weight: 700; padding: 2px 8px; }
+
+    /* ── Modal ── */
+    .overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.45);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .overlay.open { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.25);
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 420px;
+      animation: slideIn .2s ease;
+    }
+    @keyframes slideIn { from { opacity:0; transform:translateY(-12px); } to { opacity:1; transform:translateY(0); } }
+    .modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 1rem; }
+    .field { margin-bottom: .875rem; }
+    .field label { display: block; font-size: .78rem; font-weight: 600; color: #444; margin-bottom: .3rem; }
+    .field input, .field select {
+      border: 1.5px solid #d1d5db;
+      border-radius: 7px;
+      font-size: .875rem;
+      padding: .45rem .65rem;
+      width: 100%;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus, .field select:focus { border-color: #6366f1; }
+    .modal-actions { display: flex; gap: .625rem; justify-content: flex-end; margin-top: 1.25rem; }
+    .btn-cancel { background: #f3f4f6; color: #333; border: none; border-radius: 7px; cursor: pointer; font-size: .82rem; font-weight: 600; padding: .45rem .9rem; transition: background .15s; }
+    .btn-cancel:hover { background: #e5e7eb; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #ef4444;
+      color: #fff;
+      border-radius: 8px;
+      font-size: .875rem;
+      font-weight: 600;
+      padding: .6rem 1.2rem;
+      z-index: 300;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .3s;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <h1>CloseLoop CRM</h1>
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('pipeline')">Pipeline</button>
+    <button class="tab" onclick="showTab('contacts')">Contacts</button>
+  </div>
+</nav>
+
+<!-- Pipeline view -->
+<div id="view-pipeline" class="view active">
+  <div class="pipeline-toolbar">
+    <h2>Pipeline</h2>
+    <button class="btn" onclick="openNewDealModal(null)">+ New Deal</button>
+  </div>
+  <div class="kanban" id="kanban"></div>
+</div>
+
+<!-- Contacts view -->
+<div id="view-contacts" class="view">
+  <div class="contacts-toolbar">
+    <h2>Contacts</h2>
+    <button class="btn" onclick="openNewContactModal()">+ New Contact</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th><th>Email</th><th>Phone</th><th>Company</th><th>Lead Score</th>
+      </tr>
+    </thead>
+    <tbody id="contacts-body"></tbody>
+  </table>
+</div>
+
+<!-- New Deal modal -->
+<div class="overlay" id="deal-overlay" onclick="closeDealModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>New Deal</h3>
+    <div class="field">
+      <label>Title *</label>
+      <input id="deal-title" type="text" placeholder="Deal title">
+    </div>
+    <div class="field">
+      <label>Contact *</label>
+      <select id="deal-contact"></select>
+    </div>
+    <div class="field">
+      <label>Value ($)</label>
+      <input id="deal-value" type="number" min="0" step="0.01" placeholder="0.00">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeDealModal()">Cancel</button>
+      <button class="btn" onclick="submitDeal()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Contact modal -->
+<div class="overlay" id="contact-overlay" onclick="closeContactModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>New Contact</h3>
+    <div class="field">
+      <label>Name *</label>
+      <input id="contact-name" type="text" placeholder="Full name">
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input id="contact-email" type="email" placeholder="email@example.com">
+    </div>
+    <div class="field">
+      <label>Phone</label>
+      <input id="contact-phone" type="text" placeholder="+1 555 000 0000">
+    </div>
+    <div class="field">
+      <label>Company</label>
+      <input id="contact-company" type="text" placeholder="Acme Inc.">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeContactModal()">Cancel</button>
+      <button class="btn" onclick="submitContact()">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let deals = [];
+  let contacts = [];
+  let draggedDealId = null;
+
+  // ── Bootstrap ──────────────────────────────────────────────────────────────
+  async function init() {
+    await Promise.all([loadDeals(), loadContacts()]);
+    renderKanban();
+    renderContacts();
+  }
+
+  async function loadDeals() {
+    const res = await fetch('/deals');
+    deals = await res.json();
+  }
+
+  async function loadContacts() {
+    const res = await fetch('/contacts');
+    contacts = await res.json();
+  }
+
+  // ── Tab switching ──────────────────────────────────────────────────────────
+  function showTab(name) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('view-' + name).classList.add('active');
+    const tabs = document.querySelectorAll('.tab');
+    const idx = name === 'pipeline' ? 0 : 1;
+    tabs[idx].classList.add('active');
+  }
+
+  // ── Kanban rendering ───────────────────────────────────────────────────────
+  function renderKanban() {
+    const kanban = document.getElementById('kanban');
+    kanban.innerHTML = '';
+    STAGES.forEach(stage => {
+      const col = buildColumn(stage, deals.filter(d => d.stage === stage));
+      kanban.appendChild(col);
+    });
+  }
+
+  function buildColumn(stage, stageDeals) {
+    const col = document.createElement('div');
+    col.className = `column stage-${stage}`;
+    col.dataset.stage = stage;
+
+    col.innerHTML = `
+      <div class="column-header">
+        <span class="column-title">${stage}</span>
+        <span class="column-count">${stageDeals.length}</span>
+      </div>
+      <div class="cards" id="cards-${stage}"></div>
+      <button class="btn-sm" onclick="openNewDealModal('${stage}')">+ Add deal</button>
+    `;
+
+    const cardsEl = col.querySelector('.cards');
+    stageDeals.forEach(deal => cardsEl.appendChild(buildCard(deal)));
+
+    cardsEl.addEventListener('dragover', onDragOver);
+    cardsEl.addEventListener('dragleave', onDragLeave);
+    cardsEl.addEventListener('drop', e => onDrop(e, stage));
+
+    return col;
+  }
+
+  function buildCard(deal) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.draggable = true;
+    card.dataset.id = deal.id;
+
+    const val = deal.value != null ? '$' + Number(deal.value).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '$0';
+    const prob = deal.probability != null ? Math.round(deal.probability * 100) + '%' : '0%';
+    const contact = deal.contact_name || '';
+
+    card.innerHTML = `
+      <div class="card-title">${escHtml(deal.title)}</div>
+      ${contact ? `<div class="card-contact">${escHtml(contact)}</div>` : ''}
+      <div class="card-meta"><span>${val}</span><span>${prob}</span></div>
+    `;
+
+    card.addEventListener('dragstart', e => {
+      draggedDealId = deal.id;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      draggedDealId = null;
+    });
+
+    return card;
+  }
+
+  // ── Drag and drop ──────────────────────────────────────────────────────────
+  function onDragOver(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+    e.dataTransfer.dropEffect = 'move';
+  }
+
+  function onDragLeave(e) {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      e.currentTarget.classList.remove('drag-over');
+    }
+  }
+
+  async function onDrop(e, newStage) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    if (draggedDealId == null) return;
+
+    const deal = deals.find(d => d.id === draggedDealId);
+    if (!deal || deal.stage === newStage) return;
+
+    const res = await fetch(`/deals/${draggedDealId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: newStage }),
+    });
+
+    if (res.status === 422) {
+      const err = await res.json();
+      showToast(err.detail || 'Invalid stage transition');
+      return;
+    }
+
+    if (!res.ok) {
+      showToast('Unexpected error — could not move deal');
+      return;
+    }
+
+    const updated = await res.json();
+    const idx = deals.findIndex(d => d.id === updated.id);
+    if (idx !== -1) deals[idx] = updated;
+    renderKanban();
+  }
+
+  // ── Contacts rendering ─────────────────────────────────────────────────────
+  function renderContacts() {
+    const tbody = document.getElementById('contacts-body');
+    tbody.innerHTML = '';
+    contacts.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escHtml(c.name)}</td>
+        <td>${escHtml(c.email || '')}</td>
+        <td>${escHtml(c.phone || '')}</td>
+        <td>${escHtml(c.company || '')}</td>
+        <td><span class="score-badge">${Number(c.lead_score).toFixed(1)}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ── New deal modal ─────────────────────────────────────────────────────────
+  function openNewDealModal(defaultStage) {
+    document.getElementById('deal-title').value = '';
+    document.getElementById('deal-value').value = '';
+    const sel = document.getElementById('deal-contact');
+    sel.innerHTML = '<option value="">— select contact —</option>';
+    contacts.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name + (c.company ? ` (${c.company})` : '');
+      sel.appendChild(opt);
+    });
+    document.getElementById('deal-overlay').classList.add('open');
+    document.getElementById('deal-title').focus();
+  }
+
+  function closeDealModal(e) {
+    if (e && e.target !== document.getElementById('deal-overlay')) return;
+    document.getElementById('deal-overlay').classList.remove('open');
+  }
+
+  async function submitDeal() {
+    const title = document.getElementById('deal-title').value.trim();
+    const contactId = parseInt(document.getElementById('deal-contact').value, 10);
+    const value = parseFloat(document.getElementById('deal-value').value) || 0;
+
+    if (!title) { showToast('Title is required'); return; }
+    if (!contactId) { showToast('Please select a contact'); return; }
+
+    const res = await fetch('/deals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, contact_id: contactId, value }),
+    });
+
+    if (!res.ok) { showToast('Failed to create deal'); return; }
+
+    const deal = await res.json();
+    deals.push(deal);
+    document.getElementById('deal-overlay').classList.remove('open');
+    renderKanban();
+  }
+
+  // ── New contact modal ──────────────────────────────────────────────────────
+  function openNewContactModal() {
+    ['contact-name', 'contact-email', 'contact-phone', 'contact-company'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('contact-overlay').classList.add('open');
+    document.getElementById('contact-name').focus();
+  }
+
+  function closeContactModal(e) {
+    if (e && e.target !== document.getElementById('contact-overlay')) return;
+    document.getElementById('contact-overlay').classList.remove('open');
+  }
+
+  async function submitContact() {
+    const name = document.getElementById('contact-name').value.trim();
+    if (!name) { showToast('Name is required'); return; }
+
+    const body = { name };
+    const email = document.getElementById('contact-email').value.trim();
+    const phone = document.getElementById('contact-phone').value.trim();
+    const company = document.getElementById('contact-company').value.trim();
+    if (email) body.email = email;
+    if (phone) body.phone = phone;
+    if (company) body.company = company;
+
+    const res = await fetch('/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) { showToast('Failed to create contact'); return; }
+
+    const contact = await res.json();
+    contacts.push(contact);
+    document.getElementById('contact-overlay').classList.remove('open');
+    renderContacts();
+  }
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  let _toastTimer = null;
+  function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+  }
+
+  // ── Utils ──────────────────────────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Close modals on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.getElementById('deal-overlay').classList.remove('open');
+      document.getElementById('contact-overlay').classList.remove('open');
+    }
+  });
+
+  init();
+</script>
+</body>
+</html>

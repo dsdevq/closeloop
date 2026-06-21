@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from starlette.testclient import TestClient
 
 from app.main import app
@@ -9,9 +10,12 @@ from app.database import Base, get_db
 
 @pytest.fixture(scope="function")
 def client():
+    # StaticPool ensures all connections share one in-memory SQLite database,
+    # so create_all and later sessions see the same schema.
     test_engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
 
     @event.listens_for(test_engine, "connect")
