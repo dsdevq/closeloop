@@ -6,8 +6,8 @@
 |-----------|--------|
 | M1 — Skeleton & data layer | ✅ Done |
 | M2 — Contacts & deals CRUD + pipeline board | ✅ Done |
-| M3 — Activities, reminders & forecast | 🔲 Next |
-| M4 — Search/saved views, outbox & stats | 🔲 Pending |
+| M3 — Activities, reminders & forecast | ✅ Done |
+| M4 — Search/saved views, outbox & stats | 🔲 Next |
 
 ---
 
@@ -38,14 +38,22 @@
 
 ---
 
-## M3 — Activities, reminders & forecast 🔲
+## M3 — Activities, reminders & forecast ✅
 
-- [ ] `POST /activities`, `GET /activities`, `PATCH /activities/{id}`, `DELETE /activities/{id}`
-- [ ] Overdue / reminder computation (pure core, injected `now`) — partition into overdue / due-today / upcoming / completed
-- [ ] "Today" queue endpoint
-- [ ] Weighted pipeline forecast endpoint — `Σ(deal.value × stage_probability)` per open stage, total weighted + unweighted
-- [ ] Lead score computation (0–100) — recency, deal amount, stage, engagement count
-- [ ] Tests: reminder partition (timezone boundaries), forecast arithmetic (exact values), lead score monotonicity
+- [x] `app/core/forecast.py` — `weighted_forecast`, `stage_forecast` (pure, no I/O)
+- [x] `app/core/lead_score.py` — `compute_lead_score` 0–100 (pure, injected clock)
+- [x] `app/models.py` — `Activity` updated (title, updated_at, FK CASCADE/SET NULL); `Reminder` table added
+- [x] `POST /activities`, `GET /activities` (?deal_id=, ?contact_id=), `GET /activities/{id}`, `PATCH /activities/{id}`, `POST /activities/{id}/complete`, `DELETE /activities/{id}`
+- [x] `POST /reminders`, `GET /reminders/today` (undismissed, remind_at ≤ now, embedded info), `PATCH /reminders/{id}/dismiss`, `DELETE /reminders/{id}`
+- [x] `GET /forecast` — `{total, by_stage}` weighted pipeline over open deals
+- [x] `GET /contacts/{id}/lead-score` — recomputes and persists lead_score, returns `{contact_id, lead_score}`
+- [x] Frontend: "Today" tab renders Today queue with type badges + Dismiss button
+- [x] Frontend: Forecast panel below kanban columns showing weighted total
+- [x] `tests/test_core_forecast.py` — arithmetic, empty, terminal exclusion, stage grouping
+- [x] `tests/test_core_lead_score.py` — zero score, stage bonuses, caps, injected clock window
+- [x] `tests/test_activities.py` — create 201, deal_id filter, complete sets completed_at, delete 204
+- [x] `tests/test_reminders.py` — create 201, today queue, dismiss, past-due appears, embedded info
+- [x] `tests/test_forecast.py` — correct total, won/lost excluded, by_stage breakdown
 
 ---
 

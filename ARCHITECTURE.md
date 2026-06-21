@@ -14,19 +14,29 @@ app/
   core/
     clock.py        — Injectable clock (testable time)
     stages.py       — Pure stage state machine (no I/O)
+    forecast.py     — Pure weighted_forecast / stage_forecast (no I/O)  [M3]
+    lead_score.py   — Pure compute_lead_score 0–100 (no I/O)            [M3]
   routers/
     health.py       — GET /health
-    contacts.py     — CRUD /contacts
+    contacts.py     — CRUD /contacts (+ GET /contacts/{id}/lead-score)  [M3]
     deals.py        — CRUD /deals (includes stage transition endpoint)
+    activities.py   — CRUD /activities + POST /{id}/complete            [M3]
+    reminders.py    — /reminders: create, today queue, dismiss, delete  [M3]
+    forecast.py     — GET /forecast                                     [M3]
   static/
-    index.html      — Single-file kanban board + contacts table (HTML5 drag-drop, vanilla JS)
+    index.html      — Single-file kanban + contacts table + Today queue [M3]
 tests/
-  conftest.py       — per-test in-memory SQLite engine (StaticPool), get_db override
+  conftest.py           — per-test in-memory SQLite engine (StaticPool), get_db override
   test_health.py
   test_no_outbound_network.py
-  test_core_stages.py   — pure unit tests, no fixtures
+  test_core_stages.py       — pure unit tests, no fixtures
+  test_core_forecast.py     — pure unit tests (forecast arithmetic)     [M3]
+  test_core_lead_score.py   — pure unit tests (lead score logic)        [M3]
   test_contacts.py
   test_deals.py
+  test_activities.py        — API tests                                 [M3]
+  test_reminders.py         — API tests (incl. clock override)          [M3]
+  test_forecast.py          — API tests                                 [M3]
 ```
 
 ## Data Model
@@ -35,10 +45,11 @@ SQLite file `closeloop.db`. Foreign keys enforced via `PRAGMA foreign_keys = ON`
 
 | Table | Key columns | Notes |
 |-------|-------------|-------|
-| contacts | id, name, email (UNIQUE), phone, company, lead_score | M2+ |
+| contacts | id, name, email (UNIQUE), phone, company, lead_score | |
 | deals | id, title, contact_id→contacts, stage, value, probability | ON DELETE CASCADE |
 | stage_transitions | id, deal_id→deals, from_stage, to_stage, occurred_at | append-only audit log |
-| activities | id, deal_id, contact_id, type, subject, due_at, completed_at | M3 |
+| activities | id, deal_id→deals (CASCADE), contact_id→contacts (SET NULL), type, title, body, due_at, completed_at, updated_at | M3 |
+| reminders | id, activity_id→activities (CASCADE), remind_at, dismissed_at | M3 — Today queue |
 | saved_views | id, name, entity, filter_json | M4 |
 | outbox | id, to_addr, subject, body, kind, status | stub boundary |
 | event_log | id, ts, actor, verb, entity, entity_id, meta_json | usage/audit |
@@ -62,5 +73,6 @@ HTTP request
 ## Test Design
 
 - `conftest.py` creates a fresh `sqlite:///:memory:` engine per test function using `StaticPool` (required so `create_all` and session queries share the same in-memory database), overrides `get_db`.
-- Pure-logic tests (`test_core_stages.py`) need no fixtures.
+- Pure-logic tests (`test_core_*.py`) need no fixtures.
 - API tests use the `client` fixture; all state is isolated per test.
+- Clock-dependent API tests override `get_clock` directly on `app.dependency_overrides` inside the test (with `finally:` cleanup for isolation). See `test_reminders.py`.
