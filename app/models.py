@@ -39,7 +39,7 @@ class Deal(Base):
 
     contact = relationship("Contact", back_populates="deals")
     stage_transitions = relationship("StageTransition", back_populates="deal", cascade="all, delete-orphan")
-    activities = relationship("Activity", back_populates="deal")
+    activities = relationship("Activity", back_populates="deal", cascade="all, delete-orphan")
 
 
 class StageTransition(Base):
@@ -59,17 +59,31 @@ class Activity(Base):
     __tablename__ = "activities"
 
     id = Column(Integer, primary_key=True, index=True)
-    deal_id = Column(Integer, ForeignKey("deals.id"))
-    contact_id = Column(Integer, ForeignKey("contacts.id"))
-    type = Column(String, nullable=False)  # call/email/meeting/note/task
-    subject = Column(String, nullable=False)
+    deal_id = Column(Integer, ForeignKey("deals.id", ondelete="CASCADE"))
+    contact_id = Column(Integer, ForeignKey("contacts.id", ondelete="SET NULL"))
+    type = Column(String, nullable=False)  # call/email/meeting/note
+    title = Column(String, nullable=False)
     body = Column(Text)
     due_at = Column(String)
     completed_at = Column(String)
     created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
 
     deal = relationship("Deal", back_populates="activities")
     contact = relationship("Contact", back_populates="activities")
+    reminders = relationship("Reminder", back_populates="activity", cascade="all, delete-orphan")
+
+
+class Reminder(Base):
+    __tablename__ = "reminders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    activity_id = Column(Integer, ForeignKey("activities.id", ondelete="CASCADE"), nullable=False)
+    remind_at = Column(String, nullable=False)
+    dismissed_at = Column(String)
+    created_at = Column(String, nullable=False)
+
+    activity = relationship("Activity", back_populates="reminders")
 
 
 class SavedView(Base):

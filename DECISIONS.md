@@ -47,3 +47,33 @@
 **Why:** Each new connection to `sqlite:///:memory:` creates a separate empty database. Without `StaticPool`, `create_all` writes the schema to one connection and the session queries hit a different (empty) database, causing "no such table" errors.
 
 **Consequences:** All tests in a function-scoped `client` fixture see the same in-memory DB, which is correct. The pool is disposed after each test.
+
+---
+
+## D6 — Injected clock pattern for time-dependent logic
+
+**Decision:** All time-dependent core functions accept a `clock` keyword argument (default: `datetime.utcnow`) rather than calling `datetime.utcnow()` directly. Router handlers pass `clk.now` (a bound method of the injected `Clock` dependency) as the callable.
+
+**Why:** PRD §8 requires "all time-dependent logic accepts an injected `now`; no test depends on wall-clock." This makes the Today queue and lead-score recency window fully deterministic in tests.
+
+**Consequences:** Tests that need a fixed "now" override `get_clock` on `app.dependency_overrides` before making requests (cleaned up in `finally:`). Core unit tests pass a lambda directly. Clock-aware core functions strip timezone info from stored timestamps for comparison (stored strings may include `+00:00` from `Clock.now().isoformat()`).
+
+---
+
+## D7 — Reminders as a separate table from activities
+
+**Decision:** `reminders` is its own table (FK → activities) rather than treating `activities.due_at` as the reminder trigger.
+
+**Why:** The M3 spec explicitly calls for a `reminders` table, enabling multiple reminders per activity and a first-class Today queue endpoint (`GET /reminders/today`). The PRD data model uses `due_at` on activities as a simpler marker, but M3 spec supersedes this for the reminders feature.
+
+**Consequences:** `POST /reminders` requires an existing `activity_id`. The Today queue is computed on-request (no daemon), filtered by `remind_at <= now` and `dismissed_at IS NULL`.
+
+---
+
+## D8 — Lead score formula
+
+**Decision:** `compute_lead_score` produces 0.0–100.0 from: number of deals (+10 each, cap 30), deal stage bonuses (qualified+10, proposal+15, negotiation+20), recent activity in last 30 days (+5 each, cap 20), has email (+5), has phone (+5).
+
+**Why:** Simple, deterministic formula that rewards engagement recency, deal progression, and contact completeness. Caps prevent any single factor from dominating.
+
+**Consequences:** Max theoretical score = 30 + (∞ stage bonuses — uncapped) + 20 + 5 + 5 = floored at 100 by the `min(score, 100)` cap. The `GET /contacts/{id}/lead-score` endpoint recomputes and persists the score each call.

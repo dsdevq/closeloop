@@ -5,8 +5,9 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
+from app.core.lead_score import compute_lead_score
 from app.database import get_db
-from app.models import Contact
+from app.models import Activity, Contact, Deal
 
 router = APIRouter(prefix="/contacts")
 
@@ -112,3 +113,28 @@ def delete_contact(contact_id: int, db: Session = Depends(get_db)):
     db.delete(contact)
     db.commit()
     return Response(status_code=204)
+
+
+@router.get("/{contact_id}/lead-score")
+def get_lead_score(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    clk: Clock = Depends(get_clock),
+):
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    deals = db.query(Deal).filter(Deal.contact_id == contact_id).all()
+    activities = db.query(Activity).filter(Activity.contact_id == contact_id).all()
+
+    deal_dicts = [{"stage": d.stage, "value": d.value} for d in deals]
+    activity_dicts = [{"created_at": a.created_at} for a in activities]
+    contact_dict = {"email": contact.email, "phone": contact.phone}
+
+    score = compute_lead_score(contact_dict, deal_dicts, activity_dicts, clock=clk.now)
+    contact.lead_score = score
+    contact.updated_at = clk.now().isoformat()
+    db.commit()
+
+    return {"contact_id": contact_id, "lead_score": score}

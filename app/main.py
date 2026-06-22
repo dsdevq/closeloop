@@ -9,9 +9,12 @@ from fastapi.staticfiles import StaticFiles
 
 import app.models  # noqa: F401 — registers models on Base before create_all
 from app.database import Base, engine
+from app.routers.activities import router as activities_router
 from app.routers.contacts import router as contacts_router
 from app.routers.deals import router as deals_router
+from app.routers.forecast import router as forecast_router
 from app.routers.health import router as health_router
+from app.routers.reminders import router as reminders_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -50,5 +53,8 @@ async def _json_logging(request: Request, call_next):
 app.include_router(health_router, prefix="")
 app.include_router(contacts_router)
 app.include_router(deals_router)
+app.include_router(activities_router)
+app.include_router(reminders_router)
+app.include_router(forecast_router)
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

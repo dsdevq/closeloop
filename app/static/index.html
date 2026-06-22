@@ -207,6 +207,71 @@
     .btn-cancel { background: #f3f4f6; color: #333; border: none; border-radius: 7px; cursor: pointer; font-size: .82rem; font-weight: 600; padding: .45rem .9rem; transition: background .15s; }
     .btn-cancel:hover { background: #e5e7eb; }
 
+    /* ── Forecast panel ── */
+    .forecast-panel {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      display: inline-flex;
+      align-items: center;
+      gap: 1.5rem;
+      margin-top: 1rem;
+      padding: .75rem 1.25rem;
+    }
+    .forecast-label { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #555; }
+    .forecast-value { font-size: 1.2rem; font-weight: 700; color: #6366f1; }
+    .forecast-sub { font-size: .75rem; color: #888; margin-top: .1rem; }
+
+    /* ── Today view ── */
+    .today-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .today-toolbar h2 { font-size: 1rem; font-weight: 600; }
+    .today-empty { color: #888; font-size: .9rem; padding: 2rem 0; text-align: center; }
+    .today-list { display: flex; flex-direction: column; gap: .625rem; }
+    .today-row {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: .75rem 1rem;
+    }
+    .today-row-main { flex: 1; min-width: 0; }
+    .today-title { font-size: .875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .today-meta { font-size: .75rem; color: #666; margin-top: .2rem; }
+    .type-badge {
+      border-radius: 6px;
+      font-size: .7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .type-call    { background: #dbeafe; color: #1d4ed8; }
+    .type-email   { background: #fce7f3; color: #9d174d; }
+    .type-meeting { background: #d1fae5; color: #065f46; }
+    .type-note    { background: #fef9c3; color: #854d0e; }
+    .btn-dismiss {
+      background: transparent;
+      border: 1.5px solid #d1d5db;
+      border-radius: 7px;
+      color: #666;
+      cursor: pointer;
+      font-size: .78rem;
+      font-weight: 600;
+      padding: .3rem .75rem;
+      transition: border-color .15s, color .15s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .btn-dismiss:hover { border-color: #6366f1; color: #6366f1; }
+
     /* ── Toast ── */
     .toast {
       position: fixed;
@@ -232,8 +297,9 @@
 <nav>
   <h1>CloseLoop CRM</h1>
   <div class="tabs">
-    <button class="tab active" onclick="showTab('pipeline')">Pipeline</button>
-    <button class="tab" onclick="showTab('contacts')">Contacts</button>
+    <button class="tab active" data-tab="pipeline" onclick="showTab('pipeline')">Pipeline</button>
+    <button class="tab" data-tab="contacts" onclick="showTab('contacts')">Contacts</button>
+    <button class="tab" data-tab="today" onclick="showTab('today')">Today</button>
   </div>
 </nav>
 
@@ -244,6 +310,21 @@
     <button class="btn" onclick="openNewDealModal(null)">+ New Deal</button>
   </div>
   <div class="kanban" id="kanban"></div>
+  <div class="forecast-panel" id="forecast-panel" style="display:none">
+    <div>
+      <div class="forecast-label">Weighted Forecast</div>
+      <div class="forecast-value" id="forecast-total">—</div>
+      <div class="forecast-sub">open deals only · by stage probability</div>
+    </div>
+  </div>
+</div>
+
+<!-- Today view -->
+<div id="view-today" class="view">
+  <div class="today-toolbar">
+    <h2>Today</h2>
+  </div>
+  <div id="today-list"></div>
 </div>
 
 <!-- Contacts view -->
@@ -324,7 +405,7 @@
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
   async function init() {
-    await Promise.all([loadDeals(), loadContacts()]);
+    await Promise.all([loadDeals(), loadContacts(), loadForecast(), loadToday()]);
     renderKanban();
     renderContacts();
   }
@@ -339,14 +420,34 @@
     contacts = await res.json();
   }
 
+  async function loadForecast() {
+    try {
+      const res = await fetch('/forecast');
+      if (!res.ok) return;
+      const data = await res.json();
+      const panel = document.getElementById('forecast-panel');
+      const el = document.getElementById('forecast-total');
+      el.textContent = '$' + Number(data.total).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      panel.style.display = '';
+    } catch (_) { /* non-fatal */ }
+  }
+
+  async function loadToday() {
+    try {
+      const res = await fetch('/reminders/today');
+      if (!res.ok) return;
+      const items = await res.json();
+      renderToday(items);
+    } catch (_) { /* non-fatal */ }
+  }
+
   // ── Tab switching ──────────────────────────────────────────────────────────
   function showTab(name) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById('view-' + name).classList.add('active');
-    const tabs = document.querySelectorAll('.tab');
-    const idx = name === 'pipeline' ? 0 : 1;
-    tabs[idx].classList.add('active');
+    const btn = document.querySelector(`.tab[data-tab="${name}"]`);
+    if (btn) btn.classList.add('active');
   }
 
   // ── Kanban rendering ───────────────────────────────────────────────────────
@@ -554,6 +655,51 @@
     contacts.push(contact);
     document.getElementById('contact-overlay').classList.remove('open');
     renderContacts();
+  }
+
+  // ── Today queue rendering ──────────────────────────────────────────────────
+  function renderToday(items) {
+    const container = document.getElementById('today-list');
+    container.innerHTML = '';
+    if (!items || items.length === 0) {
+      container.innerHTML = '<div class="today-empty">No reminders due today — you\'re all caught up.</div>';
+      return;
+    }
+    const list = document.createElement('div');
+    list.className = 'today-list';
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'today-row';
+      row.id = 'reminder-row-' + item.id;
+
+      const typeClass = 'type-' + (item.activity_type || 'note');
+      const remindTime = item.remind_at ? new Date(item.remind_at).toLocaleString() : '';
+      const deal = item.deal_title ? `<span>📋 ${escHtml(item.deal_title)}</span>` : '';
+      const contact = item.contact_name ? `<span>👤 ${escHtml(item.contact_name)}</span>` : '';
+      const meta = [deal, contact, remindTime ? `<span>🕐 ${escHtml(remindTime)}</span>` : ''].filter(Boolean).join(' · ');
+
+      row.innerHTML = `
+        <span class="type-badge ${typeClass}">${escHtml(item.activity_type || '')}</span>
+        <div class="today-row-main">
+          <div class="today-title">${escHtml(item.activity_title || '')}</div>
+          <div class="today-meta">${meta}</div>
+        </div>
+        <button class="btn-dismiss" onclick="dismissReminder(${item.id})">Dismiss</button>
+      `;
+      list.appendChild(row);
+    });
+    container.appendChild(list);
+  }
+
+  async function dismissReminder(id) {
+    const res = await fetch(`/reminders/${id}/dismiss`, { method: 'PATCH' });
+    if (!res.ok) { showToast('Failed to dismiss reminder'); return; }
+    const row = document.getElementById('reminder-row-' + id);
+    if (row) row.remove();
+    const container = document.getElementById('today-list');
+    if (container && !container.querySelector('.today-row')) {
+      container.innerHTML = '<div class="today-empty">No reminders due today — you\'re all caught up.</div>';
+    }
   }
 
   // ── Toast ──────────────────────────────────────────────────────────────────
