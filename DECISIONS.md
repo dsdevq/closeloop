@@ -70,6 +70,26 @@
 
 ---
 
+## D9 — Filter AST grammar design
+
+**Decision:** The filter expression is a recursive dict with an `op` key. Leaf nodes (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `starts_with`) have `field` and `value` keys. Composite nodes (`and`, `or`) have a `children` list; `not` has a `child` key. The AST is serialised as JSON in `saved_views.filter_expr`.
+
+**Why:** A dict-native grammar requires no custom parser and is trivially serialisable to/from JSON. The small fixed op-set covers all CRM query needs (equality, range, substring) without a full query language. Pure `parse_filter` + `evaluate_filter` functions live in `app/core/filter_ast.py` and are tested independently of any DB.
+
+**Consequences:** Saved views store the raw JSON; `POST /saved-views/{id}/apply` deserialises and evaluates in Python against rows fetched from SQLite. This is suitable for small datasets (tens–hundreds of records); a future SQL-push-down optimisation could be added if needed.
+
+---
+
+## D10 — Outbox is a queue-only stub boundary
+
+**Decision:** `POST /outbox` inserts a row with `status='queued'` and returns immediately. No real email or network call is ever made. The `sent_at` column and `status` transitions (`queued→sent/failed`) are available for a future delivery worker, but none exists in MVP.
+
+**Why:** PRD §7 explicitly states "No real email/SMS send. The comms boundary is the `outbox` table; 'send' = insert a queued row." PRD §8 requires a test asserting no outbound network connections. Keeping the outbox as a queue stub enforces this contract without any SMTP configuration.
+
+**Consequences:** A test (`test_outbox_makes_no_network_call`) monkeypatches `socket.create_connection` to assert no socket is opened during a queue operation. The `outbox` table has FKs to `deals` and `contacts` (both ON DELETE SET NULL) so outbox rows survive entity deletion.
+
+---
+
 ## D8 — Lead score formula
 
 **Decision:** `compute_lead_score` produces 0.0–100.0 from: number of deals (+10 each, cap 30), deal stage bonuses (qualified+10, proposal+15, negotiation+20), recent activity in last 30 days (+5 each, cap 20), has email (+5), has phone (+5).

@@ -37,10 +37,14 @@ app/
     stages.py    — stage state machine
     forecast.py  — weighted_forecast, stage_forecast
     lead_score.py— compute_lead_score
+    filter_ast.py— parse_filter, evaluate_filter; nodes: AND/OR/NOT/CompareNode  [M4]
   routers/       — thin HTTP handlers; one file per resource
     health.py, contacts.py, deals.py, activities.py, reminders.py, forecast.py
+    saved_views.py — /saved-views CRUD + /{id}/apply                             [M4]
+    outbox.py      — /outbox queue (no real send)                                [M4]
+    stats.py       — /stats aggregate metrics                                    [M4]
   static/
-    index.html   — the entire frontend (tabs: Pipeline, Contacts, Today)
+    index.html   — the entire frontend (tabs: Pipeline, Contacts, Today, Stats)  [M4]
 tests/
   conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override)
   test_*.py      — one file per concern
@@ -90,6 +94,8 @@ tests/
 | D6 | Injected clock pattern: `clock` kwarg defaults to `datetime.utcnow`; router passes `clk.now` |
 | D7 | `reminders` is a separate table from `activities`; Today queue is on-request, no daemon |
 | D8 | Lead score formula: deals +10 (cap 30), stage bonuses, recent activity +5 (cap 20), email/phone +5 |
+| D9 | Filter AST: recursive dict with `op` key; stored as JSON in `saved_views.filter_expr`; evaluated in Python against fetched rows |
+| D10 | Outbox is queue-only — `POST /outbox` inserts `status='queued'`, never opens a socket; enforced by test |
 
 ## Gotchas
 
@@ -107,4 +113,12 @@ tests/
 | M1 | ✅ Done | Boot, schema, /health, logging |
 | M2 | ✅ Done | Contacts/deals CRUD, kanban UI |
 | M3 | ✅ Done | Activities, reminders, forecast, lead score, Today tab |
-| M4 | 🔲 Next | Filter AST, saved views, outbox, stats |
+| M4 | ✅ Done | Filter AST, saved views, outbox queue, stats dashboard |
+
+## M4 gotchas
+
+- **`saved_views.entity_type`** (not `entity`) and **`filter_expr`** (not `filter_json`) — the M1 placeholder had different column names; M4 redefined both models cleanly.
+- **`outbox.to_address`** (not `to_addr`), no `kind` column, body is NOT NULL, adds `deal_id`/`contact_id` FKs (SET NULL).
+- **`stats.py` imports `Callable`** — unused after refactor; the clock is accessed via `clk.now` (bound method, callable). Keep the pattern consistent with other routers.
+- **Filter AST `missing field → neq is True`** — a record without the field at all is treated as "missing" (falsy for eq/gt/etc.), but `neq` returns True because the field value is indeed "not equal" to any specified value.
+- **`POST /saved-views/{id}/apply`** fetches all rows in Python and evaluates the AST in-process. Acceptable for small datasets; not SQL-push-down.
