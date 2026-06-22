@@ -46,6 +46,7 @@ def _contact_to_dict(c: Contact) -> dict:
         "company": c.company,
         "lead_score": c.lead_score,
         "created_at": c.created_at,
+        "tags": [ct.tag.name for ct in c.tags],
     }
 
 
@@ -63,6 +64,7 @@ def _deal_to_dict(d: Deal) -> dict:
         "created_at": d.created_at,
         "updated_at": d.updated_at,
         "closed_at": d.closed_at,
+        "tags": [dt.tag.name for dt in d.tags],
     }
 
 

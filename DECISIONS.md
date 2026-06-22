@@ -97,3 +97,73 @@
 **Why:** Simple, deterministic formula that rewards engagement recency, deal progression, and contact completeness. Caps prevent any single factor from dominating.
 
 **Consequences:** Max theoretical score = 30 + (∞ stage bonuses — uncapped) + 20 + 5 + 5 = floored at 100 by the `min(score, 100)` cap. The `GET /contacts/{id}/lead-score` endpoint recomputes and persists the score each call.
+
+---
+
+## D11 — Lead-score v2 uses exponential decay (not binary window)
+
+**Decision:** `compute_lead_score_v2` uses exponential temporal decay (`score = base × 2^(-days_ago / half_life)`) rather than the binary 30-day window in v1. Weights are configurable via a `weights` dict kwarg. Both functions coexist: v1 is preserved for backward compatibility, v2 is opt-in.
+
+**Why:** Exponential decay gives a smoother score gradient — an activity yesterday is worth more than one 25 days ago — while still rewarding recent engagement. Configurable weights let operators tune for their specific sales cycle without code changes. Preserving v1 avoids breaking existing tests and callers.
+
+**Consequences:** `compute_lead_score_v2` with `use_decay=False` and default weights produces results identical to v1 (verified by test). The `half_life` defaults to `activity_window_days / 2 = 15` days.
+
+---
+
+## D12 — Forecast scenarios use fixed built-in probability maps
+
+**Decision:** `forecast_scenarios` ships three named maps (best/expected/worst) with fixed probabilities. `POST /forecast/scenarios` additionally accepts an optional `probability_overrides` dict for a "custom" scenario.
+
+**Why:** Named scenarios are immediately useful without UI configuration, and the custom map allows ad-hoc experimentation without storing state. Built-in maps make backtesting pinnable (tests assert exact values against `_SCENARIO_BEST`, etc.).
+
+**Consequences:** The built-in maps are internal constants (`_SCENARIO_BEST` etc.) exported from `app/core/forecast.py` for direct use in tests. If users want to change the built-ins they must pass a custom map.
+
+---
+
+## D13 — Bulk import accepts JSON body `{csv: "..."}` not multipart
+
+**Decision:** `POST /contacts/import` and `POST /deals/import` accept a JSON body `{"csv": "<csv text>"}` rather than multipart file upload.
+
+**Why:** Keeps the router implementation simple (standard Pydantic body parsing) and the API consistent with the rest of the codebase (all endpoints accept JSON). Multipart would require `python-multipart` in requirements. CSV-as-JSON-field is sufficient for the use case (import from a pasted spreadsheet export).
+
+**Consequences:** The CSV is size-limited to what can fit in a request body. Row-level validation errors are returned in the response body (`errors` list) not as HTTP 4xx — this lets partial imports succeed.
+
+---
+
+## D14 — RRULE-lite covers daily/weekly/monthly only; validates eagerly
+
+**Decision:** `expand_rrule` supports `freq ∈ {daily, weekly, monthly}` with an integer `interval`. No `UNTIL`, `BYDAY`, `BYMONTHDAY`, or other RRULE modifiers. Validation (unknown freq, non-positive interval) always runs even when `count=0`.
+
+**Why:** Daily/weekly/monthly covers the overwhelming majority of CRM follow-up cadences. Full RRULE would require a dependency (python-dateutil) or hundreds of lines. Eager validation (before the count guard) means invalid rules fail fast at creation time, not only at expand time.
+
+**Consequences:** `Activity.recurrence_rule` stores a JSON subset: `{"freq": "daily"|"weekly"|"monthly", "interval": N}`. Validation runs in both `POST /activities` and `POST /activities/{id}/expand`.
+
+---
+
+## D15 — Tags use many-to-many junction tables; filter via `contains`/`in` on serialized list
+
+**Decision:** `Tag` is a first-class table; `ContactTag` and `DealTag` are junction tables with composite primary keys. When evaluating filter AST against contacts/deals, tags are serialised as a `list[str]` of tag names. The `contains` op checks list membership for list fields; the new `in` op checks if a list-valued field contains a scalar value.
+
+**Why:** A separate `tags` table keeps names normalised and allows renaming. Serialising tags as a list in the row dict means the existing filter AST engine handles tag queries without a special case: `{"op": "contains", "field": "tags", "value": "vip"}` Just Works.
+
+**Consequences:** `SavedView.apply` already fetches all rows in Python; tags are included in `_contact_to_dict`/`_deal_to_dict` when those serialisers are updated to include tags. The `in` op (PRD §5 — was missing from M4) is now implemented and pinned by tests.
+
+---
+
+## D16 — Deal-rotting uses per-stage SLA thresholds derived from velocity core
+
+**Decision:** `GET /deals/rotting` flags open deals whose `time_in_stage_hours > sla_days * 24`. Default SLAs: lead=7d, qualified=14d, proposal=21d, negotiation=30d. Terminal stages are never flagged.
+
+**Why:** SLA-based rotting is a mechanical application of the velocity core (`time_in_stage_hours`, `is_deal_rotting`) already needed for PRD §5.6. Keeping the logic in `app/core/velocity.py` makes it independently testable and reusable.
+
+**Consequences:** The endpoint uses an injected clock (testable). A fresh deal always has `is_rotting=False` since 0h < any SLA. SLA constants are exported via `stage_sla_days()` to allow future override without touching the default.
+
+---
+
+## D17 — Outbox digest is a single queued row per call; no deduplication
+
+**Decision:** `POST /outbox/digest` always inserts one new outbox row (regardless of whether a digest was already created today). It fetches undismissed, past-due reminders from the reminders table and composes a plain-text body.
+
+**Why:** Simplest possible implementation that satisfies the PRD requirement ("daily 'overdue + due-today' digest composed into the outbox table"). Deduplication would require storing the last-digested-at timestamp, adding complexity with no clear benefit for the single-user use case.
+
+**Consequences:** Calling the endpoint multiple times creates multiple queued rows (idempotency is the caller's responsibility). The outbox row uses a fixed `to_address` of `digest@closeloop.local` — a sentinel that makes it easy to identify digest rows vs manual outbox entries.

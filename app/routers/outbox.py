@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
 from app.database import get_db
-from app.models import Outbox
+from app.models import Outbox, Reminder
 
 router = APIRouter(prefix="/outbox")
 
@@ -86,3 +86,54 @@ def delete_message(message_id: int, db: Session = Depends(get_db)):
     db.delete(msg)
     db.commit()
     return Response(status_code=204)
+
+
+@router.post("/digest", status_code=201)
+def create_digest(
+    db: Session = Depends(get_db),
+    clk: Clock = Depends(get_clock),
+):
+    """
+    Compose a daily digest of all overdue and due-today reminders into one outbox row.
+
+    Fetches undismissed reminders whose remind_at ≤ now, composes a plain-text
+    summary, and inserts a single outbox row with status='queued'.  If there are no
+    overdue reminders the endpoint still succeeds but notes that in the body.
+    No real email is ever sent (outbox is a stub boundary per D10).
+    """
+    now = clk.now()
+    now_str = now.isoformat()
+    date_str = now.date().isoformat()
+
+    reminders = (
+        db.query(Reminder)
+        .filter(Reminder.dismissed_at == None, Reminder.remind_at <= now_str)  # noqa: E711
+        .all()
+    )
+
+    lines = [f"CloseLoop Daily Digest — {date_str}", ""]
+    if not reminders:
+        lines.append("No overdue or due-today reminders.")
+    else:
+        lines.append(f"{len(reminders)} reminder(s) need your attention:")
+        lines.append("")
+        for r in reminders:
+            a = r.activity
+            if a:
+                deal_info = f" (Deal: {a.deal.title})" if a.deal else ""
+                contact_info = f" / {a.contact.name}" if a.contact else ""
+                lines.append(f"  • [{a.type.upper()}] {a.title}{deal_info}{contact_info}")
+                lines.append(f"    Due: {r.remind_at}")
+
+    body = "\n".join(lines)
+    msg = Outbox(
+        to_address="digest@closeloop.local",
+        subject=f"CloseLoop Digest — {date_str}",
+        body=body,
+        status="queued",
+        created_at=now_str,
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return _to_out(msg)

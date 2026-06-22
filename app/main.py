@@ -18,6 +18,7 @@ from app.routers.outbox import router as outbox_router
 from app.routers.reminders import router as reminders_router
 from app.routers.saved_views import router as saved_views_router
 from app.routers.stats import router as stats_router
+from app.routers.tags import router as tags_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -62,5 +63,6 @@ app.include_router(forecast_router)
 app.include_router(saved_views_router)
 app.include_router(outbox_router)
 app.include_router(stats_router)
+app.include_router(tags_router)
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

@@ -144,3 +144,71 @@ def test_deal_has_contact_name_embedded(client, contact):
     assert res.status_code == 200
     deal = next(d for d in res.json() if d["title"] == "Named")
     assert deal["contact_name"] == "Alice Buyer"
+
+
+# ── Deal-rotting alerts ───────────────────────────────────────────────────────
+
+def test_rotting_returns_200_with_list(client, contact):
+    res = client.get("/deals/rotting")
+    assert res.status_code == 200
+    assert isinstance(res.json(), list)
+
+
+def test_rotting_includes_days_in_stage_and_sla(client, contact):
+    client.post("/deals", json={"title": "Open", "contact_id": contact["id"], "value": 1000.0})
+    res = client.get("/deals/rotting")
+    assert res.status_code == 200
+    deals = res.json()
+    assert len(deals) >= 1
+    d = deals[0]
+    assert "days_in_stage" in d
+    assert "sla_days" in d
+    assert "is_rotting" in d
+
+
+def test_rotting_excludes_terminal_deals(client, contact):
+    r = client.post("/deals", json={"title": "Won", "contact_id": contact["id"], "value": 1000.0})
+    did = r.json()["id"]
+    for s in ["qualified", "proposal", "negotiation", "won"]:
+        client.patch(f"/deals/{did}/stage", json={"stage": s})
+
+    res = client.get("/deals/rotting")
+    titles = [d["title"] for d in res.json()]
+    assert "Won" not in titles
+
+
+def test_rotting_fresh_deal_not_rotting(client, contact):
+    """A deal just created has 0 days in stage — cannot be rotting."""
+    client.post("/deals", json={"title": "Fresh", "contact_id": contact["id"]})
+    res = client.get("/deals/rotting")
+    deals = res.json()
+    fresh = next((d for d in deals if d["title"] == "Fresh"), None)
+    assert fresh is not None
+    assert fresh["is_rotting"] is False
+    assert fresh["days_in_stage"] is not None
+    assert fresh["days_in_stage"] < 1
+
+
+def test_rotting_uses_injected_clock(client, contact):
+    """When clock is advanced past SLA, deal should appear as rotting."""
+    from datetime import datetime, timedelta, timezone
+    from app.core.clock import get_clock
+    from app.main import app
+
+    r = client.post("/deals", json={"title": "Aging", "contact_id": contact["id"]})
+    # Lead SLA is 7 days; advance clock 10 days
+    future = datetime.now(timezone.utc) + timedelta(days=10)
+
+    class FutureClock:
+        def now(self):
+            return future
+
+    app.dependency_overrides[get_clock] = lambda: FutureClock()
+    try:
+        res = client.get("/deals/rotting")
+        deals = res.json()
+        aging = next((d for d in deals if d["title"] == "Aging"), None)
+        assert aging is not None
+        assert aging["is_rotting"] is True
+    finally:
+        app.dependency_overrides.pop(get_clock, None)

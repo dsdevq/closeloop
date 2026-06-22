@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# SQLite databases — ephemeral artefacts, never commit
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store

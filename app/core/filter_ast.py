@@ -28,7 +28,7 @@ class NotNode:
 
 FilterNode = Union[CompareNode, AndNode, OrNode, NotNode]
 
-_COMPARE_OPS = {"eq", "neq", "gt", "gte", "lt", "lte", "contains", "starts_with"}
+_COMPARE_OPS = {"eq", "neq", "gt", "gte", "lt", "lte", "contains", "starts_with", "in"}
 
 
 def parse_filter(expr: dict) -> FilterNode:
@@ -69,7 +69,17 @@ def _compare(field_val: Any, op: str, value: Any) -> bool:
         return field_val == value
     if op == "neq":
         return field_val != value
+    if op == "in":
+        # Check if field_val is a member of value (a list), OR if value is in
+        # field_val when field_val is a list (tag membership queries).
+        if isinstance(field_val, list):
+            return value in field_val
+        candidates = value if isinstance(value, list) else [value]
+        return field_val in candidates
     if op == "contains":
+        # For list fields (e.g. tags), check membership; for strings, substring.
+        if isinstance(field_val, list):
+            return value in field_val
         return str(value) in str(field_val)
     if op == "starts_with":
         return str(field_val).startswith(str(value))
