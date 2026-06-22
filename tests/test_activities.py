@@ -138,3 +138,128 @@ def test_delete_activity_returns_204(client, contact):
 def test_delete_activity_404_for_missing(client):
     res = client.delete("/activities/9999")
     assert res.status_code == 404
+
+
+# ── Recurrence tests ──────────────────────────────────────────────────────────
+
+def test_create_activity_with_recurrence_rule(client, contact):
+    rule = {"freq": "weekly", "interval": 1}
+    res = client.post("/activities", json={
+        "contact_id": contact["id"],
+        "type": "call",
+        "title": "Weekly call",
+        "due_at": "2024-06-01T09:00:00",
+        "recurrence_rule": rule,
+    })
+    assert res.status_code == 201
+    data = res.json()
+    assert data["recurrence_rule"] == rule
+
+
+def test_create_activity_with_invalid_recurrence_rule_returns_422(client, contact):
+    res = client.post("/activities", json={
+        "contact_id": contact["id"],
+        "type": "call",
+        "title": "Bad rule",
+        "due_at": "2024-06-01T09:00:00",
+        "recurrence_rule": {"freq": "hourly", "interval": 1},
+    })
+    assert res.status_code == 422
+
+
+def test_expand_activity_returns_created_children(client, contact):
+    rule = {"freq": "daily", "interval": 1}
+    create = client.post("/activities", json={
+        "contact_id": contact["id"],
+        "type": "call",
+        "title": "Daily standup",
+        "due_at": "2024-06-01T09:00:00",
+        "recurrence_rule": rule,
+    })
+    assert create.status_code == 201
+    aid = create.json()["id"]
+
+    res = client.post(f"/activities/{aid}/expand", json={"count": 3})
+    assert res.status_code == 201
+    children = res.json()
+    assert len(children) == 3
+    # Due dates should advance by 1 day each
+    assert children[0]["due_at"] == "2024-06-02T09:00:00"
+    assert children[1]["due_at"] == "2024-06-03T09:00:00"
+    assert children[2]["due_at"] == "2024-06-04T09:00:00"
+
+
+def test_expand_activity_children_inherit_type_and_title(client, contact):
+    rule = {"freq": "weekly", "interval": 2}
+    create = client.post("/activities", json={
+        "contact_id": contact["id"],
+        "type": "meeting",
+        "title": "Bi-weekly sync",
+        "due_at": "2024-06-01T10:00:00",
+        "recurrence_rule": rule,
+    })
+    aid = create.json()["id"]
+    res = client.post(f"/activities/{aid}/expand", json={"count": 1})
+    assert res.status_code == 201
+    child = res.json()[0]
+    assert child["type"] == "meeting"
+    assert child["title"] == "Bi-weekly sync"
+    assert child["contact_id"] == contact["id"]
+    assert child["recurrence_rule"] == rule
+
+
+def test_expand_activity_without_due_at_returns_422(client, contact):
+    create = client.post("/activities", json={
+        "contact_id": contact["id"],
+        "type": "call",
+        "title": "No date",
+        "recurrence_rule": {"freq": "daily", "interval": 1},
+    })
+    aid = create.json()["id"]
+    res = client.post(f"/activities/{aid}/expand", json={"count": 1})
+    assert res.status_code == 422
+
+
+def test_expand_activity_without_rule_returns_422(client, contact):
+    create = client.post("/activities", json={
+        "contact_id": contact["id"],
+        "type": "call",
+        "title": "No rule",
+        "due_at": "2024-06-01T09:00:00",
+    })
+    aid = create.json()["id"]
+    res = client.post(f"/activities/{aid}/expand", json={"count": 1})
+    assert res.status_code == 422
+
+
+def test_expand_activity_count_zero_returns_422(client, contact):
+    create = client.post("/activities", json={
+        "contact_id": contact["id"],
+        "type": "call",
+        "title": "Zero expand",
+        "due_at": "2024-06-01T09:00:00",
+        "recurrence_rule": {"freq": "daily", "interval": 1},
+    })
+    aid = create.json()["id"]
+    res = client.post(f"/activities/{aid}/expand", json={"count": 0})
+    assert res.status_code == 422
+
+
+def test_expand_activity_404_for_missing(client):
+    res = client.post("/activities/9999/expand", json={"count": 1})
+    assert res.status_code == 404
+
+
+def test_recurrence_rule_returned_in_get(client, contact):
+    rule = {"freq": "monthly", "interval": 1}
+    create = client.post("/activities", json={
+        "contact_id": contact["id"],
+        "type": "meeting",
+        "title": "Monthly review",
+        "due_at": "2024-06-15T09:00:00",
+        "recurrence_rule": rule,
+    })
+    aid = create.json()["id"]
+    res = client.get(f"/activities/{aid}")
+    assert res.status_code == 200
+    assert res.json()["recurrence_rule"] == rule

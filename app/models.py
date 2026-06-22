@@ -19,6 +19,7 @@ class Contact(Base):
 
     deals = relationship("Deal", back_populates="contact")
     activities = relationship("Activity", back_populates="contact")
+    tags = relationship("ContactTag", back_populates="contact", cascade="all, delete-orphan")
 
 
 class Deal(Base):
@@ -40,6 +41,7 @@ class Deal(Base):
     contact = relationship("Contact", back_populates="deals")
     stage_transitions = relationship("StageTransition", back_populates="deal", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="deal", cascade="all, delete-orphan")
+    tags = relationship("DealTag", back_populates="deal", cascade="all, delete-orphan")
 
 
 class StageTransition(Base):
@@ -66,6 +68,7 @@ class Activity(Base):
     body = Column(Text)
     due_at = Column(String)
     completed_at = Column(String)
+    recurrence_rule = Column(Text)  # JSON RRULE-lite: {"freq": "daily|weekly|monthly", "interval": N}
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
 
@@ -123,3 +126,34 @@ class EventLog(Base):
     entity = Column(String, nullable=False)
     entity_id = Column(String)
     meta_json = Column(Text)
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    created_at = Column(String, nullable=False)
+
+    contacts = relationship("ContactTag", back_populates="tag", cascade="all, delete-orphan")
+    deals = relationship("DealTag", back_populates="tag", cascade="all, delete-orphan")
+
+
+class ContactTag(Base):
+    __tablename__ = "contact_tags"
+
+    contact_id = Column(Integer, ForeignKey("contacts.id", ondelete="CASCADE"), primary_key=True)
+    tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+
+    contact = relationship("Contact", back_populates="tags")
+    tag = relationship("Tag", back_populates="contacts")
+
+
+class DealTag(Base):
+    __tablename__ = "deal_tags"
+
+    deal_id = Column(Integer, ForeignKey("deals.id", ondelete="CASCADE"), primary_key=True)
+    tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+
+    deal = relationship("Deal", back_populates="tags")
+    tag = relationship("Tag", back_populates="deals")

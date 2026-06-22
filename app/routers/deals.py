@@ -1,11 +1,15 @@
+import csv
+import io
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
 from app.core.stages import stage_probability, validate_transition
+from app.core.velocity import is_deal_rotting, stage_sla_days, time_in_stage_hours
 from app.database import get_db
 from app.models import Contact, Deal, StageTransition
 
@@ -88,6 +92,138 @@ def list_deals(stage: Optional[str] = None, db: Session = Depends(get_db)):
         query = query.filter(Deal.stage == stage)
     deals = query.all()
     return [_to_out(d) for d in deals]
+
+
+_DEAL_CSV_EXPORT_FIELDS = ["id", "contact_id", "title", "value", "stage", "currency", "expected_close_date", "created_at"]
+_DEAL_VALID_STAGES = {"lead", "qualified", "proposal", "negotiation", "won", "lost"}
+
+
+@router.get("/export")
+def export_deals(db: Session = Depends(get_db)):
+    """Export all deals as a CSV file."""
+    deals = db.query(Deal).all()
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=_DEAL_CSV_EXPORT_FIELDS)
+    writer.writeheader()
+    for d in deals:
+        writer.writerow({f: getattr(d, f, None) for f in _DEAL_CSV_EXPORT_FIELDS})
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=deals.csv"},
+    )
+
+
+@router.post("/import")
+def import_deals(
+    body: dict,
+    db: Session = Depends(get_db),
+    clk: Clock = Depends(get_clock),
+):
+    """
+    Import deals from CSV text.
+
+    Accepts: {"csv": "<csv text>"}.
+    Returns: {"imported": N, "errors": [{"row": R, "reason": "..."}, ...]}.
+    Required columns: contact_id, title. Optional: value, stage, currency.
+    """
+    csv_text = body.get("csv", "")
+    if not csv_text:
+        raise HTTPException(status_code=422, detail="csv field is required and must not be empty")
+
+    reader = csv.DictReader(io.StringIO(csv_text))
+    imported = 0
+    errors: list[dict] = []
+    now = clk.now().isoformat()
+
+    for row_num, row in enumerate(reader, start=2):
+        title = (row.get("title") or "").strip()
+        if not title:
+            errors.append({"row": row_num, "reason": "title is required"})
+            continue
+
+        try:
+            contact_id = int(row.get("contact_id") or "")
+        except (ValueError, TypeError):
+            errors.append({"row": row_num, "reason": "contact_id must be an integer"})
+            continue
+
+        contact = db.query(Contact).filter(Contact.id == contact_id).first()
+        if not contact:
+            errors.append({"row": row_num, "reason": f"contact_id not found: {contact_id}"})
+            continue
+
+        try:
+            value = float(row.get("value") or 0)
+        except (ValueError, TypeError):
+            errors.append({"row": row_num, "reason": "value must be a number"})
+            continue
+
+        stage = (row.get("stage") or "lead").strip()
+        if stage not in _DEAL_VALID_STAGES:
+            errors.append({"row": row_num, "reason": f"invalid stage: {stage!r}"})
+            continue
+
+        currency = (row.get("currency") or "USD").strip()
+        prob = stage_probability(stage)
+
+        deal = Deal(
+            contact_id=contact_id,
+            title=title,
+            value=value,
+            stage=stage,
+            probability=prob,
+            currency=currency,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(deal)
+        db.flush()
+
+        transition = StageTransition(
+            deal_id=deal.id,
+            from_stage=None,
+            to_stage=stage,
+            occurred_at=now,
+        )
+        db.add(transition)
+        imported += 1
+
+    db.commit()
+    return {"imported": imported, "errors": errors}
+
+
+@router.get("/rotting")
+def get_rotting_deals(
+    db: Session = Depends(get_db),
+    clk: Clock = Depends(get_clock),
+):
+    """
+    Return all open deals that have been stagnant in their current stage
+    longer than the stage SLA.  Each result includes ``days_in_stage``,
+    ``sla_days``, and ``is_rotting`` fields appended to the standard deal dict.
+    """
+    now = clk.now()
+    _TERMINAL = {"won", "lost"}
+    sla = stage_sla_days()
+
+    open_deals = db.query(Deal).filter(Deal.stage.notin_(list(_TERMINAL))).all()
+    result = []
+    for deal in open_deals:
+        trans = [
+            {"to_stage": t.to_stage, "from_stage": t.from_stage, "occurred_at": t.occurred_at}
+            for t in deal.stage_transitions
+        ]
+        hours = time_in_stage_hours(trans, deal.stage, now)
+        days = round(hours / 24, 1) if hours is not None else None
+        rotting = is_deal_rotting(trans, deal.stage, now)
+        entry = _to_out(deal)
+        entry["days_in_stage"] = days
+        entry["sla_days"] = sla.get(deal.stage)
+        entry["is_rotting"] = rotting
+        result.append(entry)
+    return result
 
 
 @router.get("/{deal_id}")

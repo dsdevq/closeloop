@@ -1,7 +1,11 @@
+import csv
+import io
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
@@ -76,6 +80,85 @@ def create_contact(
 def list_contacts(db: Session = Depends(get_db)):
     contacts = db.query(Contact).all()
     return [_to_out(c) for c in contacts]
+
+
+_CSV_EXPORT_FIELDS = ["id", "name", "email", "phone", "company", "lead_score", "created_at"]
+_CSV_IMPORT_REQUIRED = {"name"}
+_VALID_SOURCES = {"referral", "inbound", "outbound", "event", "other"}
+
+
+@router.get("/export")
+def export_contacts(db: Session = Depends(get_db)):
+    """Export all contacts as a CSV file."""
+    contacts = db.query(Contact).all()
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=_CSV_EXPORT_FIELDS)
+    writer.writeheader()
+    for c in contacts:
+        writer.writerow({f: getattr(c, f, None) for f in _CSV_EXPORT_FIELDS})
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=contacts.csv"},
+    )
+
+
+@router.post("/import")
+def import_contacts(
+    body: dict,
+    db: Session = Depends(get_db),
+    clk: Clock = Depends(get_clock),
+):
+    """
+    Import contacts from CSV text.
+
+    Accepts: {"csv": "<csv text>"}.
+    Returns: {"imported": N, "errors": [{"row": R, "reason": "..."}, ...]}.
+    """
+    csv_text = body.get("csv", "")
+    if not csv_text:
+        raise HTTPException(status_code=422, detail="csv field is required and must not be empty")
+
+    reader = csv.DictReader(io.StringIO(csv_text))
+    imported = 0
+    errors: list[dict] = []
+    now = clk.now().isoformat()
+
+    for row_num, row in enumerate(reader, start=2):  # row 1 = header
+        name = (row.get("name") or "").strip()
+        if not name:
+            errors.append({"row": row_num, "reason": "name is required"})
+            continue
+
+        email = (row.get("email") or "").strip() or None
+        phone = (row.get("phone") or "").strip() or None
+        company = (row.get("company") or "").strip() or None
+        source = (row.get("source") or "").strip() or None
+        if source and source not in _VALID_SOURCES:
+            errors.append({"row": row_num, "reason": f"invalid source: {source!r}"})
+            continue
+
+        contact = Contact(
+            name=name,
+            email=email,
+            phone=phone,
+            company=company,
+            source=source,
+            lead_score=0.0,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(contact)
+        try:
+            db.flush()
+            imported += 1
+        except IntegrityError:
+            db.rollback()
+            errors.append({"row": row_num, "reason": f"email already exists: {email}"})
+
+    db.commit()
+    return {"imported": imported, "errors": errors}
 
 
 @router.get("/{contact_id}")

@@ -73,13 +73,45 @@
 
 ---
 
-## Post-MVP backlog (from PRD §6)
+## Post-MVP backlog (from PRD §6) — M5 delivery
 
-1. Stats dashboard — event_log + per-endpoint p50/p95 latency
-2. Forecast scenarios & probability overrides (best/expected/worst)
-3. Lead-score model v2 — temporal decay, configurable weights
-4. Bulk import/export — CSV in/out
-5. Activity recurrence — RRULE-lite expansion engine
-6. Tags & segmentation — many-to-many, queryable via filter AST
-7. Outbox digest — daily "overdue + due-today" composed into outbox
-8. Deal-rotting alerts — stagnant deals flagged against stage SLAs
+| # | Feature | Status |
+|---|---------|--------|
+| 1 | Stats dashboard (observability) — `/stats` endpoint | ✅ Done (M4) |
+| 2 | Forecast scenarios & probability overrides | ✅ Done (M5) |
+| 3 | Lead-score model v2 — temporal decay + configurable weights | ✅ Done (M5) |
+| 4 | Bulk import/export — CSV in/out for contacts & deals | ✅ Done (M5) |
+| 5 | Activity recurrence — RRULE-lite expansion engine | ✅ Done (M5) |
+| 6 | Tags & segmentation — many-to-many, queryable via filter AST | ✅ Done (M5) |
+| 7 | Outbox digest — daily "overdue + due-today" composed into outbox | ✅ Done (M5) |
+| 8 | Deal-rotting alerts — stagnant deals flagged against stage SLAs | ✅ Done (M5) |
+
+**All 8 post-MVP features delivered. Done-when condition: 6-of-8 satisfied (8 of 8 delivered).**
+
+---
+
+## M5 — Post-MVP iteration ✅
+
+- [x] `app/core/forecast.py` — `weighted_forecast_with_overrides`, `forecast_scenarios` (best/expected/worst + custom map)
+- [x] `POST /forecast/scenarios` — returns all scenarios; accepts optional `probability_overrides`
+- [x] `app/core/lead_score.py` — `compute_lead_score_v2` with exponential temporal decay and configurable weights
+- [x] `GET /contacts/export` — CSV download of all contacts
+- [x] `POST /contacts/import` — CSV bulk import with row-level validation report
+- [x] `GET /deals/export` — CSV download of all deals
+- [x] `POST /deals/import` — CSV bulk import with row-level validation report
+- [x] `app/core/recurrence.py` — RRULE-lite `expand_rrule` (daily/weekly/monthly, configurable interval)
+- [x] `Activity.recurrence_rule` column (JSON, nullable) added to model
+- [x] `POST /activities/{id}/expand` — generates N future occurrences from a recurring activity
+- [x] `Tag`, `ContactTag`, `DealTag` models (many-to-many junction tables)
+- [x] `/tags` CRUD — create/list/get/delete tags
+- [x] `/tags/contacts/{id}` — add/list/remove tags on contacts
+- [x] `/tags/deals/{id}` — add/list/remove tags on deals
+- [x] `filter_ast.py` — `in` operator added (was missing from M4 despite being in PRD §5)
+- [x] `filter_ast.py` — `contains` op updated to handle list fields (tag membership)
+- [x] `POST /outbox/digest` — compose overdue+due-today reminders into one queued outbox row
+- [x] `app/core/velocity.py` — `time_in_stage_hours`, `cycle_time_hours`, `avg_days_per_stage`, `is_deal_rotting`, `stage_sla_days`
+- [x] `GET /deals/rotting` — open deals stagnant beyond stage SLA; includes `days_in_stage`, `sla_days`, `is_rotting`
+- [x] Tests: `test_core_velocity.py`, `test_core_recurrence.py`, `test_bulk.py`, `test_tags.py`
+- [x] Tests: extended `test_core_forecast.py`, `test_core_lead_score.py`, `test_core_filter_ast.py`
+- [x] Tests: extended `test_forecast.py`, `test_deals.py`, `test_activities.py`, `test_outbox.py`
+- [x] Decisions D11–D17 documented

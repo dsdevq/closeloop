@@ -1,4 +1,5 @@
 """API tests for /outbox — queue-only, no real sends."""
+from datetime import datetime, timezone
 
 
 def _queue(client, **overrides):
@@ -109,3 +110,74 @@ def test_outbox_makes_no_network_call(client, monkeypatch):
     r = _queue(client)
     assert r.status_code == 201
     assert r.json()["status"] == "queued"
+
+
+# ── POST /outbox/digest ───────────────────────────────────────────────────────
+
+def _seed_reminder(client, remind_at: str) -> dict:
+    """Create an activity + reminder for testing the digest."""
+    cr = client.post("/contacts", json={"name": "Digest User", "email": "digest@x.com"})
+    cid = cr.json()["id"]
+    ar = client.post("/activities", json={
+        "contact_id": cid, "type": "call", "title": "Follow up",
+    })
+    aid = ar.json()["id"]
+    rr = client.post("/reminders", json={"activity_id": aid, "remind_at": remind_at})
+    assert rr.status_code == 201
+    return rr.json()
+
+
+def test_digest_returns_201_with_queued_outbox_row(client):
+    r = client.post("/outbox/digest")
+    assert r.status_code == 201
+    data = r.json()
+    assert data["status"] == "queued"
+    assert data["to_address"] == "digest@closeloop.local"
+    assert "Digest" in data["subject"]
+
+
+def test_digest_appears_in_outbox_list(client):
+    client.post("/outbox/digest")
+    msgs = client.get("/outbox").json()
+    assert any("Digest" in m["subject"] for m in msgs)
+
+
+def test_digest_with_overdue_reminders_mentions_them(client):
+    # Seed a reminder in the past
+    _seed_reminder(client, "2000-01-01T00:00:00")
+    r = client.post("/outbox/digest")
+    assert r.status_code == 201
+    body = r.json()["body"]
+    assert "Follow up" in body
+    assert "1 reminder" in body
+
+
+def test_digest_empty_reminders_body_says_none(client):
+    r = client.post("/outbox/digest")
+    assert r.status_code == 201
+    body = r.json()["body"]
+    assert "No overdue" in body
+
+
+def test_digest_does_not_include_dismissed_reminders(client):
+    _seed_reminder(client, "2000-01-01T00:00:00")
+    # Dismiss the reminder
+    reminders = client.get("/reminders/today").json()
+    assert len(reminders) == 1
+    client.patch(f"/reminders/{reminders[0]['id']}/dismiss")
+
+    r = client.post("/outbox/digest")
+    body = r.json()["body"]
+    assert "No overdue" in body
+
+
+def test_digest_makes_no_network_call(client, monkeypatch):
+    """Digest creation must not open any socket."""
+    import socket
+
+    def _no_connect(*args, **kwargs):
+        raise AssertionError("digest must not make real network calls")
+
+    monkeypatch.setattr(socket, "create_connection", _no_connect)
+    r = client.post("/outbox/digest")
+    assert r.status_code == 201

@@ -191,3 +191,54 @@ def test_missing_field_in_and_does_not_raise():
     ])
     # Should return False, not raise
     assert evaluate_filter(node, {"other": "y"}) is False
+
+
+# ── `in` operator ─────────────────────────────────────────────────────────────
+
+def test_in_op_scalar_field_in_list():
+    node = parse_filter({"op": "in", "field": "stage", "value": ["lead", "qualified"]})
+    assert evaluate_filter(node, {"stage": "lead"}) is True
+    assert evaluate_filter(node, {"stage": "qualified"}) is True
+    assert evaluate_filter(node, {"stage": "won"}) is False
+
+
+def test_in_op_scalar_field_single_value_in_list():
+    node = CompareNode(field="stage", op="in", value=["lead"])
+    assert evaluate_filter(node, {"stage": "lead"}) is True
+    assert evaluate_filter(node, {"stage": "qualified"}) is False
+
+
+def test_in_op_list_field_contains_value():
+    """When field_val is a list (e.g. tags), `in` checks if value is in the list."""
+    node = CompareNode(field="tags", op="in", value="vip")
+    assert evaluate_filter(node, {"tags": ["vip", "hot"]}) is True
+    assert evaluate_filter(node, {"tags": ["cold"]}) is False
+    assert evaluate_filter(node, {"tags": []}) is False
+
+
+def test_in_op_missing_field_is_false():
+    node = CompareNode(field="tags", op="in", value="vip")
+    assert evaluate_filter(node, {}) is False
+
+
+def test_in_op_parsed_correctly():
+    node = parse_filter({"op": "in", "field": "stage", "value": ["lead", "qualified"]})
+    assert isinstance(node, CompareNode)
+    assert node.op == "in"
+    assert node.value == ["lead", "qualified"]
+
+
+# ── `contains` with list fields (tags) ────────────────────────────────────────
+
+def test_contains_op_list_field():
+    """contains on a list field checks membership, not substring."""
+    node = CompareNode(field="tags", op="contains", value="vip")
+    assert evaluate_filter(node, {"tags": ["vip", "hot"]}) is True
+    assert evaluate_filter(node, {"tags": ["cold"]}) is False
+
+
+def test_contains_op_string_field_unchanged():
+    """contains on a string field still does substring check."""
+    node = CompareNode(field="name", op="contains", value="Ali")
+    assert evaluate_filter(node, {"name": "Alice"}) is True
+    assert evaluate_filter(node, {"name": "Bob"}) is False

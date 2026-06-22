@@ -31,20 +31,23 @@ pip install -q -r requirements.txt && python -m pytest -q
 app/
   main.py        — app creation, middleware, router registration, static mount
   database.py    — engine, SessionLocal, Base, get_db
-  models.py      — all SQLAlchemy ORM models
+  models.py      — all SQLAlchemy ORM models (incl. Tag, ContactTag, DealTag)
   core/          — pure functions only, zero I/O
     clock.py     — Clock class + get_clock FastAPI dependency
     stages.py    — stage state machine
-    forecast.py  — weighted_forecast, stage_forecast
-    lead_score.py— compute_lead_score
-    filter_ast.py— parse_filter, evaluate_filter; nodes: AND/OR/NOT/CompareNode  [M4]
+    forecast.py  — weighted_forecast, stage_forecast, forecast_scenarios        [M3+M5]
+    lead_score.py— compute_lead_score (v1) + compute_lead_score_v2 (decay)     [M3+M5]
+    filter_ast.py— parse_filter, evaluate_filter; ops incl. `in`               [M4+M5]
+    velocity.py  — time_in_stage_hours, cycle_time_hours, is_deal_rotting      [M5]
+    recurrence.py— expand_rrule (daily/weekly/monthly RRULE-lite)              [M5]
   routers/       — thin HTTP handlers; one file per resource
     health.py, contacts.py, deals.py, activities.py, reminders.py, forecast.py
-    saved_views.py — /saved-views CRUD + /{id}/apply                             [M4]
-    outbox.py      — /outbox queue (no real send)                                [M4]
-    stats.py       — /stats aggregate metrics                                    [M4]
+    saved_views.py — /saved-views CRUD + /{id}/apply                          [M4]
+    outbox.py      — /outbox queue + POST /digest                             [M4+M5]
+    stats.py       — /stats aggregate metrics                                  [M4]
+    tags.py        — /tags CRUD + /tags/contacts/{id} + /tags/deals/{id}      [M5]
   static/
-    index.html   — the entire frontend (tabs: Pipeline, Contacts, Today, Stats)  [M4]
+    index.html   — the entire frontend (tabs: Pipeline, Contacts, Today, Stats) [M4]
 tests/
   conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override)
   test_*.py      — one file per concern
@@ -96,6 +99,13 @@ tests/
 | D8 | Lead score formula: deals +10 (cap 30), stage bonuses, recent activity +5 (cap 20), email/phone +5 |
 | D9 | Filter AST: recursive dict with `op` key; stored as JSON in `saved_views.filter_expr`; evaluated in Python against fetched rows |
 | D10 | Outbox is queue-only — `POST /outbox` inserts `status='queued'`, never opens a socket; enforced by test |
+| D11 | `compute_lead_score_v2` uses exponential decay (half-life=15d); `use_decay=False` reproduces v1 exactly |
+| D12 | Forecast scenarios: 3 built-in maps (best/expected/worst) + optional custom override via `POST /forecast/scenarios` |
+| D13 | Bulk import accepts `{"csv": "..."}` JSON body (not multipart); row-level errors returned in response, not HTTP 4xx |
+| D14 | RRULE-lite: daily/weekly/monthly only; validation runs even when count=0 |
+| D15 | Tags via many-to-many junction tables; serialised as `list[str]` in filter AST row dicts; `in`/`contains` handle list fields |
+| D16 | Deal-rotting: per-stage SLA thresholds (lead=7d, qual=14d, proposal=21d, neg=30d); terminal stages never rot |
+| D17 | Outbox digest: one row per call, no deduplication; `to_address=digest@closeloop.local` as sentinel |
 
 ## Gotchas
 
@@ -114,6 +124,7 @@ tests/
 | M2 | ✅ Done | Contacts/deals CRUD, kanban UI |
 | M3 | ✅ Done | Activities, reminders, forecast, lead score, Today tab |
 | M4 | ✅ Done | Filter AST, saved views, outbox queue, stats dashboard |
+| M5 | ✅ Done | All 8 post-MVP features: scenarios, lead-score v2, CSV import/export, recurrence, tags, digest, rotting alerts |
 
 ## M4 gotchas
 
@@ -122,3 +133,13 @@ tests/
 - **`stats.py` imports `Callable`** — unused after refactor; the clock is accessed via `clk.now` (bound method, callable). Keep the pattern consistent with other routers.
 - **Filter AST `missing field → neq is True`** — a record without the field at all is treated as "missing" (falsy for eq/gt/etc.), but `neq` returns True because the field value is indeed "not equal" to any specified value.
 - **`POST /saved-views/{id}/apply`** fetches all rows in Python and evaluates the AST in-process. Acceptable for small datasets; not SQL-push-down.
+
+## M5 gotchas
+
+- **`GET /deals/rotting` and `GET /deals/export` must be registered BEFORE `GET /deals/{deal_id}`** — FastAPI matches literal path segments before parameterized ones only when they're registered first in the same router.
+- **`GET /contacts/export` and `POST /contacts/import` must be registered BEFORE `GET /contacts/{contact_id}`** — same routing order issue.
+- **`expand_rrule` validates before the `count=0` guard** — so calling with count=0 still raises ValueError for invalid rules. This is intentional for router-level validation without needing a separate validate function.
+- **`recurrence_rule` stored as JSON Text** in Activity; `_to_out` deserializes it and returns `None` when absent. Client-side JSON encoding/decoding is fully round-tripped.
+- **Tags router uses `/tags/contacts/{id}` and `/tags/deals/{id}` prefixes** (not nested under `/contacts/{id}/tags`) to keep the router self-contained under the `/tags` prefix.
+- **`POST /outbox/digest` path conflict** — `POST /outbox` and `POST /outbox/digest` are different paths; `GET /outbox/{message_id}` uses `int` type annotation so "digest" would 422 on GET but the POST endpoint has a distinct path that matches before the int param.
+- **`compute_lead_score_v2` with `use_decay=False` and default weights is bit-identical to v1** — verified by test `test_v2_use_decay_false_matches_v1`. Use this when comparing scores for regression.
