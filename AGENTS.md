@@ -6,7 +6,7 @@
 
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.x (ORM), SQLite (`closeloop.db`)
 - **Frontend:** Single-file vanilla HTML/CSS/JS at `app/static/index.html` — no build step, no bundler, no CDN
-- **Tests:** pytest, `httpx`-backed Starlette `TestClient`
+- **Tests:** pytest, `httpx2`-backed Starlette `TestClient` (Starlette 1.3+ uses `httpx2`, not `httpx`)
 - **Zero external services** — no email, no network calls at runtime
 
 ## How to run / test
@@ -15,8 +15,11 @@
 # Install deps
 pip install -r requirements.txt
 
-# Start server
+# Start server (local)
 uvicorn app.main:app --reload
+
+# Start server (preview/container — bind all interfaces)
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 # Run tests (must be green before every PR)
 python -m pytest -q
