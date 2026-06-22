@@ -90,21 +90,25 @@ class SavedView(Base):
     __tablename__ = "saved_views"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    entity = Column(String, nullable=False)  # deals/contacts/activities
-    filter_json = Column(Text, nullable=False)
+    name = Column(String, nullable=False, unique=True)
+    entity_type = Column(String, nullable=False)  # contacts / deals
+    filter_expr = Column(Text, nullable=False)  # JSON-serialised filter AST
+    sort_field = Column(String)
+    sort_dir = Column(String, nullable=False, default="asc")
     created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
 
 
 class Outbox(Base):
     __tablename__ = "outbox"
 
     id = Column(Integer, primary_key=True, index=True)
-    to_addr = Column(String, nullable=False)
+    to_address = Column(String, nullable=False)
     subject = Column(String, nullable=False)
-    body = Column(Text)
-    kind = Column(String, nullable=False)  # email/sms
+    body = Column(Text, nullable=False)
     status = Column(String, nullable=False, default="queued")  # queued/sent/failed
+    deal_id = Column(Integer, ForeignKey("deals.id", ondelete="SET NULL"))
+    contact_id = Column(Integer, ForeignKey("contacts.id", ondelete="SET NULL"))
     created_at = Column(String, nullable=False)
     sent_at = Column(String)
 

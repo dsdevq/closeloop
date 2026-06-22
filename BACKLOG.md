@@ -7,7 +7,7 @@
 | M1 — Skeleton & data layer | ✅ Done |
 | M2 — Contacts & deals CRUD + pipeline board | ✅ Done |
 | M3 — Activities, reminders & forecast | ✅ Done |
-| M4 — Search/saved views, outbox & stats | 🔲 Next |
+| M4 — Search/saved views, outbox & stats | ✅ Done |
 
 ---
 
@@ -57,13 +57,19 @@
 
 ---
 
-## M4 — Search/saved views, outbox & stats 🔲
+## M4 — Search/saved views, outbox & stats ✅
 
-- [ ] Filter AST evaluator (AND/OR/NOT, eq/neq/gt/lt/gte/lte/contains/in) — pure core
-- [ ] Saved views: `POST /saved_views`, `GET /saved_views`, `GET /saved_views/{id}`, `DELETE /saved_views/{id}`
-- [ ] Outbox-backed "send follow-up" action — inserts `queued` row, never sends
-- [ ] Stats view: event_log counters + per-endpoint metrics from logging middleware
-- [ ] Tests: filter AST semantics, outbox stub, stats endpoint
+- [x] `app/core/filter_ast.py` — `parse_filter` + `evaluate_filter` (pure, no I/O); nodes: AND/OR/NOT/COMPARE; ops: eq/neq/gt/gte/lt/lte/contains/starts_with
+- [x] `saved_views` table: name UNIQUE, entity_type, filter_expr (JSON AST), sort_field, sort_dir, timestamps
+- [x] `outbox` table: to_address, subject, body NOT NULL, status, deal_id/contact_id FKs (SET NULL)
+- [x] `POST /saved-views`, `GET /saved-views`, `GET /saved-views/{id}`, `POST /saved-views/{id}/apply`, `DELETE /saved-views/{id}`
+- [x] `POST /outbox` (queue only, no real send), `GET /outbox` (?status= filter), `GET /outbox/{id}`, `DELETE /outbox/{id}`
+- [x] `GET /stats` — total_contacts/deals/activities, deals_by_stage, pipeline_value, weighted_forecast, activities_last_30_days, outbox_queued; injected clock
+- [x] Frontend: Stats tab with metric cards + deals-by-stage breakdown; Saved Views panel in Pipeline and Contacts tabs
+- [x] `tests/test_core_filter_ast.py` — 20+ cases covering all ops, nesting, missing-field handling
+- [x] `tests/test_saved_views.py` — create/list/get/apply/delete with AND filter and filter-against-seeded-records
+- [x] `tests/test_outbox.py` — queue, list, status filter, delete, no-network assertion
+- [x] `tests/test_stats.py` — all keys, deals_by_stage, weighted_forecast excludes terminal, clock override for 30d window
 
 ---
 
