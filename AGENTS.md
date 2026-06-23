@@ -6,8 +6,7 @@
 
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.x (ORM), SQLite (`closeloop.db`)
 - **Auth:** `pyjwt>=2.8.0` (HS256 JWT) + `bcrypt>=4.0.0` (password hashing)
-- **Frontend (current):** Vanilla HTML/CSS/JS — `app/static/index.html` (main app) + `app/static/login.html` (auth) — no build step, no bundler, no CDN
-- **Frontend (target):** React + Vite + TypeScript + Tailwind. Treat the current vanilla UI as MVP scaffolding; do not deepen it for rich UI work.
+- **Frontend:** React + Vite + TypeScript + Tailwind in `frontend/`; production build emits static assets to `app/static/`
 - **Tests:** pytest, `httpx`-backed Starlette `TestClient`
 - **Zero external services** — no email, no network calls at runtime
 
@@ -16,6 +15,10 @@
 ```bash
 # Install deps
 pip install -r requirements.txt
+
+# Build frontend
+npm --prefix frontend install --include=dev
+npm run build
 
 # Start server (local)
 uvicorn app.main:app --reload
@@ -58,9 +61,13 @@ app/
     accounts.py    — /accounts CRUD; rep sees own, manager/admin see all       [v2]
     pipeline.py    — /pipeline/stages CRUD; write is admin/manager only        [v2]
   static/
-    login.html   — JWT sign-in form; stores tokens in localStorage             [v1]
-    index.html   — main app (tabs: Pipeline, Contacts, Accounts, Today, Stats);
-                   dynamic kanban using pipeline stages API; v2.0               [v2]
+    index.html   — generated React SPA entry served at `/`
+    login.html   — generated React SPA entry copy served at `/login.html`
+    assets/      — generated Vite JS/CSS bundles
+frontend/
+  src/App.tsx    — React CRM app: auth, Pipeline, Contacts, Accounts, Today, Stats
+  src/styles.css — Tailwind base/components/utilities
+  vite.config.ts — builds into `app/static/`; dev proxy targets FastAPI on :8000
 tests/
   conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override, seeded admin+token)
   test_*.py      — one file per concern
@@ -97,9 +104,11 @@ tests/
 - Never mock the database — always use the in-memory SQLite via the `client` fixture
 
 ### Frontend
-- Tab switching: use `data-tab="name"` attribute on `<button class="tab">` — `showTab(name)` reads it with `querySelector('[data-tab="${name}"]')`
-- All user-supplied content goes through `escHtml()` before insertion into innerHTML
-- `fetch` errors show a toast via `showToast(msg)` — never throw to console unhandled
+- Source of truth is `frontend/src`, not generated files under `app/static`.
+- Run `npm --prefix frontend run typecheck`, `npm --prefix frontend run lint`, and `npm --prefix frontend run build` before frontend PRs.
+- The build script copies `app/static/index.html` to `app/static/login.html` so FastAPI serves the same React auth-aware SPA at both routes.
+- Use typed React state and normal JSX escaping. Avoid `dangerouslySetInnerHTML` for user-supplied data.
+- API calls should go through the shared `apiFetch()` helper so 401 responses consistently clear tokens and route to `/login.html`.
 
 ## Auth layer (v1)
 
@@ -204,12 +213,12 @@ tests/
 - `_seed_pipeline_stages()` seeds 6 default stages and then backfills `deal.stage_id` from legacy `deal.stage` string via `_STAGE_NAME_MAP`.
 - In tests, `conftest.py` does NOT call lifespan (and therefore does NOT seed pipeline stages). Tests that need stages must insert them directly via the API or `PipelineStage` model.
 
-### Frontend (index.html v2.0)
-- Added Accounts tab: account list table (name, domain, industry, # contacts, owner_id) + detail panel (meta fields + linked contacts table) + New Account modal.
-- Contacts table gains an Account column with a click-through link (calls `goToAccount(id)`).
-- Kanban now loads stages dynamically from `GET /pipeline/stages` and places deals by `deal.stage_id`. If stages table is empty the kanban shows a placeholder message.
-- Drag-and-drop PATCH now sends `{ stage_id: <id> }` to `PATCH /deals/{id}` (instead of the legacy `/stage` endpoint).
-- Version label updated to v2.0.
+### Frontend (React v2.1)
+- React SPA preserves the v2 tabs: Pipeline, Contacts, Accounts, Today, Stats.
+- Accounts tab includes account list, account detail, linked contacts, create account, and delete account.
+- Contacts table keeps account click-through and create contact.
+- Kanban loads stages dynamically from `GET /pipeline/stages`, places deals by `deal.stage_id`, and drag-and-drop PATCHes `{ stage_id: <id> }` to `/deals/{id}`.
+- The same React bundle handles `/` and `/login.html`; login stores access/refresh tokens and current user in `localStorage`.
 
 ### Key decisions (v2)
 | # | Decision |
