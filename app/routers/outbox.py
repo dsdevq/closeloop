@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
 from app.database import get_db
-from app.models import Outbox, Reminder
+from app.dependencies import get_current_user
+from app.models import Outbox, Reminder, User
 
 router = APIRouter(prefix="/outbox")
 
@@ -40,6 +41,7 @@ def queue_message(
     body: OutboxCreate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     now = clk.now().isoformat()
     msg = Outbox(
@@ -58,7 +60,11 @@ def queue_message(
 
 
 @router.get("")
-def list_messages(status: Optional[str] = None, db: Session = Depends(get_db)):
+def list_messages(
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     query = db.query(Outbox)
     if status is not None:
         if status not in _VALID_STATUSES:
@@ -71,7 +77,11 @@ def list_messages(status: Optional[str] = None, db: Session = Depends(get_db)):
 
 
 @router.get("/{message_id}")
-def get_message(message_id: int, db: Session = Depends(get_db)):
+def get_message(
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     msg = db.query(Outbox).filter(Outbox.id == message_id).first()
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -79,7 +89,11 @@ def get_message(message_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{message_id}", status_code=204)
-def delete_message(message_id: int, db: Session = Depends(get_db)):
+def delete_message(
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     msg = db.query(Outbox).filter(Outbox.id == message_id).first()
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -92,6 +106,7 @@ def delete_message(message_id: int, db: Session = Depends(get_db)):
 def create_digest(
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Compose a daily digest of all overdue and due-today reminders into one outbox row.

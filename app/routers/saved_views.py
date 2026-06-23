@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.core.clock import Clock, get_clock
 from app.core.filter_ast import evaluate_filter, parse_filter
 from app.database import get_db
-from app.models import Contact, Deal, SavedView
+from app.dependencies import get_current_user
+from app.models import Contact, Deal, SavedView, User
 
 router = APIRouter(prefix="/saved-views")
 
@@ -73,6 +74,7 @@ def create_saved_view(
     body: SavedViewCreate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     if body.entity_type not in _VALID_ENTITY_TYPES:
         raise HTTPException(
@@ -108,13 +110,20 @@ def create_saved_view(
 
 
 @router.get("")
-def list_saved_views(db: Session = Depends(get_db)):
+def list_saved_views(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     views = db.query(SavedView).all()
     return [_to_out(v) for v in views]
 
 
 @router.get("/{view_id}")
-def get_saved_view(view_id: int, db: Session = Depends(get_db)):
+def get_saved_view(
+    view_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     view = db.query(SavedView).filter(SavedView.id == view_id).first()
     if not view:
         raise HTTPException(status_code=404, detail="Saved view not found")
@@ -122,7 +131,11 @@ def get_saved_view(view_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{view_id}/apply")
-def apply_saved_view(view_id: int, db: Session = Depends(get_db)):
+def apply_saved_view(
+    view_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     view = db.query(SavedView).filter(SavedView.id == view_id).first()
     if not view:
         raise HTTPException(status_code=404, detail="Saved view not found")
@@ -147,7 +160,11 @@ def apply_saved_view(view_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{view_id}", status_code=204)
-def delete_saved_view(view_id: int, db: Session = Depends(get_db)):
+def delete_saved_view(
+    view_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     view = db.query(SavedView).filter(SavedView.id == view_id).first()
     if not view:
         raise HTTPException(status_code=404, detail="Saved view not found")

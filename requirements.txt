@@ -3,3 +3,5 @@ uvicorn[standard]>=0.20.0
 sqlalchemy>=2.0.0
 pytest>=7.0.0
 httpx>=0.28
+bcrypt>=4.0.0
+pyjwt>=2.8.0

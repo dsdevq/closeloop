@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
 from app.database import get_db
-from app.models import Activity, Reminder
+from app.dependencies import get_current_user
+from app.models import Activity, Reminder, User
 
 router = APIRouter(prefix="/reminders")
 
@@ -46,6 +47,7 @@ def create_reminder(
     body: ReminderCreate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     activity = db.query(Activity).filter(Activity.id == body.activity_id).first()
     if not activity:
@@ -66,6 +68,7 @@ def create_reminder(
 def get_today_reminders(
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     now_str = clk.now().isoformat()
     reminders = (
@@ -81,6 +84,7 @@ def dismiss_reminder(
     reminder_id: int,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     r = db.query(Reminder).filter(Reminder.id == reminder_id).first()
     if not r:
@@ -92,7 +96,11 @@ def dismiss_reminder(
 
 
 @router.delete("/{reminder_id}", status_code=204)
-def delete_reminder(reminder_id: int, db: Session = Depends(get_db)):
+def delete_reminder(
+    reminder_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     r = db.query(Reminder).filter(Reminder.id == reminder_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Reminder not found")

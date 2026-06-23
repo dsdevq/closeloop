@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.clock import Clock, get_clock
 from app.core.forecast import weighted_forecast
 from app.database import get_db
-from app.models import Activity, Contact, Deal, Outbox
+from app.dependencies import get_current_user
+from app.models import Activity, Contact, Deal, Outbox, User
 
 router = APIRouter(prefix="/stats")
 
@@ -17,6 +18,7 @@ _TERMINAL = {"won", "lost"}
 def get_stats(
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     now = clk.now()
 

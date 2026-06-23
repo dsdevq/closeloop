@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.core.clock import Clock, get_clock
 from app.core.recurrence import expand_rrule
 from app.database import get_db
-from app.models import Activity
+from app.dependencies import get_current_user
+from app.models import Activity, User
 
 router = APIRouter(prefix="/activities")
 
@@ -59,11 +60,19 @@ def _to_out(a: Activity) -> dict:
     }
 
 
+def _apply_owner_filter(query, user: User):
+    """Restrict to user's own activities when role is rep."""
+    if user.role == "rep":
+        return query.filter(Activity.owner_id == user.id)
+    return query
+
+
 @router.post("", status_code=201)
 def create_activity(
     body: ActivityCreate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     if body.type not in _VALID_TYPES:
         raise HTTPException(
@@ -84,6 +93,7 @@ def create_activity(
         body=body.body,
         due_at=body.due_at,
         recurrence_rule=json.dumps(body.recurrence_rule) if body.recurrence_rule is not None else None,
+        owner_id=current_user.id,
         created_at=now,
         updated_at=now,
     )
@@ -98,8 +108,9 @@ def list_activities(
     deal_id: Optional[int] = None,
     contact_id: Optional[int] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Activity)
+    query = _apply_owner_filter(db.query(Activity), current_user)
     if deal_id is not None:
         query = query.filter(Activity.deal_id == deal_id)
     if contact_id is not None:
@@ -108,8 +119,13 @@ def list_activities(
 
 
 @router.get("/{activity_id}")
-def get_activity(activity_id: int, db: Session = Depends(get_db)):
-    a = db.query(Activity).filter(Activity.id == activity_id).first()
+def get_activity(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = _apply_owner_filter(db.query(Activity), current_user)
+    a = query.filter(Activity.id == activity_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Activity not found")
     return _to_out(a)
@@ -121,8 +137,10 @@ def update_activity(
     body: ActivityUpdate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
-    a = db.query(Activity).filter(Activity.id == activity_id).first()
+    query = _apply_owner_filter(db.query(Activity), current_user)
+    a = query.filter(Activity.id == activity_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Activity not found")
     updates = body.model_dump(exclude_unset=True)
@@ -154,8 +172,10 @@ def complete_activity(
     activity_id: int,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
-    a = db.query(Activity).filter(Activity.id == activity_id).first()
+    query = _apply_owner_filter(db.query(Activity), current_user)
+    a = query.filter(Activity.id == activity_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Activity not found")
     now = clk.now().isoformat()
@@ -167,8 +187,13 @@ def complete_activity(
 
 
 @router.delete("/{activity_id}", status_code=204)
-def delete_activity(activity_id: int, db: Session = Depends(get_db)):
-    a = db.query(Activity).filter(Activity.id == activity_id).first()
+def delete_activity(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = _apply_owner_filter(db.query(Activity), current_user)
+    a = query.filter(Activity.id == activity_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Activity not found")
     db.delete(a)
@@ -182,6 +207,7 @@ def expand_activity(
     body: ExpandRequest,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Generate ``count`` future occurrences of a recurring activity.
@@ -189,7 +215,8 @@ def expand_activity(
     The source activity must have both ``due_at`` and ``recurrence_rule`` set.
     Returns a list of newly created activity rows (not the original).
     """
-    a = db.query(Activity).filter(Activity.id == activity_id).first()
+    query = _apply_owner_filter(db.query(Activity), current_user)
+    a = query.filter(Activity.id == activity_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Activity not found")
     if not a.recurrence_rule:
@@ -225,6 +252,7 @@ def expand_activity(
             body=a.body,
             due_at=dt.isoformat(),
             recurrence_rule=a.recurrence_rule,
+            owner_id=a.owner_id,
             created_at=now,
             updated_at=now,
         )
