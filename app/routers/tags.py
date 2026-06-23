@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
 from app.database import get_db
-from app.models import Contact, ContactTag, Deal, DealTag, Tag
+from app.dependencies import get_current_user
+from app.models import Contact, ContactTag, Deal, DealTag, Tag, User
 
 router = APIRouter(prefix="/tags")
 
@@ -29,6 +30,7 @@ def create_tag(
     body: TagCreate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     tag = Tag(name=body.name.strip(), created_at=clk.now().isoformat())
     db.add(tag)
@@ -42,12 +44,19 @@ def create_tag(
 
 
 @router.get("")
-def list_tags(db: Session = Depends(get_db)):
+def list_tags(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     return [_to_out(t) for t in db.query(Tag).all()]
 
 
 @router.get("/{tag_id}")
-def get_tag(tag_id: int, db: Session = Depends(get_db)):
+def get_tag(
+    tag_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
@@ -55,7 +64,11 @@ def get_tag(tag_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{tag_id}", status_code=204)
-def delete_tag(tag_id: int, db: Session = Depends(get_db)):
+def delete_tag(
+    tag_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
@@ -67,7 +80,11 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
 # ── Contact tags ──────────────────────────────────────────────────────────────
 
 @router.get("/contacts/{contact_id}")
-def list_contact_tags(contact_id: int, db: Session = Depends(get_db)):
+def list_contact_tags(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -79,6 +96,7 @@ def add_contact_tag(
     contact_id: int,
     body: TagAssign,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     contact = db.query(Contact).filter(Contact.id == contact_id).first()
     if not contact:
@@ -99,7 +117,12 @@ def add_contact_tag(
 
 
 @router.delete("/contacts/{contact_id}/{tag_id}", status_code=204)
-def remove_contact_tag(contact_id: int, tag_id: int, db: Session = Depends(get_db)):
+def remove_contact_tag(
+    contact_id: int,
+    tag_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     ct = (
         db.query(ContactTag)
         .filter(ContactTag.contact_id == contact_id, ContactTag.tag_id == tag_id)
@@ -115,7 +138,11 @@ def remove_contact_tag(contact_id: int, tag_id: int, db: Session = Depends(get_d
 # ── Deal tags ──────────────────────────────────────────────────────────────────
 
 @router.get("/deals/{deal_id}")
-def list_deal_tags(deal_id: int, db: Session = Depends(get_db)):
+def list_deal_tags(
+    deal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     deal = db.query(Deal).filter(Deal.id == deal_id).first()
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
@@ -127,6 +154,7 @@ def add_deal_tag(
     deal_id: int,
     body: TagAssign,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     deal = db.query(Deal).filter(Deal.id == deal_id).first()
     if not deal:
@@ -147,7 +175,12 @@ def add_deal_tag(
 
 
 @router.delete("/deals/{deal_id}/{tag_id}", status_code=204)
-def remove_deal_tag(deal_id: int, tag_id: int, db: Session = Depends(get_db)):
+def remove_deal_tag(
+    deal_id: int,
+    tag_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     dt = (
         db.query(DealTag)
         .filter(DealTag.deal_id == deal_id, DealTag.tag_id == tag_id)

@@ -3,6 +3,32 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, nullable=False, unique=True, index=True)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, nullable=False, default="rep")  # admin / manager / rep
+    full_name = Column(String, nullable=False, default="")
+    created_at = Column(String, nullable=False)
+    is_active = Column(Integer, nullable=False, default=1)  # 1=active, 0=inactive
+
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token = Column(String, nullable=False, unique=True, index=True)
+    created_at = Column(String, nullable=False)
+    revoked_at = Column(String)  # NULL = still valid
+
+    user = relationship("User", back_populates="refresh_tokens")
+
+
 class Contact(Base):
     __tablename__ = "contacts"
 
@@ -14,9 +40,11 @@ class Contact(Base):
     phone = Column(String)
     source = Column(String)  # referral/inbound/outbound/event/other
     lead_score = Column(Float, nullable=False, default=0.0)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
 
+    owner = relationship("User", foreign_keys=[owner_id])
     deals = relationship("Deal", back_populates="contact")
     activities = relationship("Activity", back_populates="contact")
     tags = relationship("ContactTag", back_populates="contact", cascade="all, delete-orphan")
@@ -34,10 +62,12 @@ class Deal(Base):
     value = Column(Float, nullable=False, default=0.0)
     probability = Column(Float, nullable=False, default=0.0)
     expected_close_date = Column(String)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
     closed_at = Column(String)
 
+    owner = relationship("User", foreign_keys=[owner_id])
     contact = relationship("Contact", back_populates="deals")
     stage_transitions = relationship("StageTransition", back_populates="deal", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="deal", cascade="all, delete-orphan")
@@ -69,9 +99,11 @@ class Activity(Base):
     due_at = Column(String)
     completed_at = Column(String)
     recurrence_rule = Column(Text)  # JSON RRULE-lite: {"freq": "daily|weekly|monthly", "interval": N}
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
 
+    owner = relationship("User", foreign_keys=[owner_id])
     deal = relationship("Deal", back_populates="activities")
     contact = relationship("Contact", back_populates="activities")
     reminders = relationship("Reminder", back_populates="activity", cascade="all, delete-orphan")

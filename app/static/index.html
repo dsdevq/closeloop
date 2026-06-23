@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CloseLoop CRM</title>
+  <title>CloseLoop CRM v1.0</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -42,6 +42,43 @@
     }
     .tab:hover { background: rgba(255,255,255,.1); color: #fff; }
     .tab.active { background: rgba(255,255,255,.18); color: #fff; font-weight: 600; }
+
+    /* ── User badge ── */
+    .nav-user {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+    }
+    .user-badge {
+      font-size: .78rem;
+      color: rgba(255,255,255,.85);
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+    }
+    .role-pill {
+      background: rgba(255,255,255,.15);
+      border-radius: 10px;
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      padding: 2px 7px;
+      text-transform: uppercase;
+    }
+    .btn-logout {
+      background: transparent;
+      border: 1.5px solid rgba(255,255,255,.3);
+      border-radius: 6px;
+      color: rgba(255,255,255,.75);
+      cursor: pointer;
+      font-size: .75rem;
+      font-weight: 600;
+      padding: .25rem .6rem;
+      transition: border-color .15s, color .15s;
+    }
+    .btn-logout:hover { border-color: rgba(255,255,255,.7); color: #fff; }
+    .version-label { font-size: .68rem; color: rgba(255,255,255,.35); }
 
     /* ── Views ── */
     .view { display: none; padding: 1.25rem 1.5rem; }
@@ -405,6 +442,14 @@
     <button class="tab" data-tab="today" onclick="showTab('today')">Today</button>
     <button class="tab" data-tab="stats" onclick="showTab('stats')">Stats</button>
   </div>
+  <div class="nav-user">
+    <div class="user-badge" id="nav-user-badge">
+      <span id="nav-user-name"></span>
+      <span class="role-pill" id="nav-role-pill"></span>
+    </div>
+    <button class="btn-logout" onclick="logout()">Sign out</button>
+    <span class="version-label">v1.0</span>
+  </div>
 </nav>
 
 <!-- Pipeline view -->
@@ -530,6 +575,52 @@
 <script>
   const STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
 
+  // ── Auth helpers ───────────────────────────────────────────────────────────
+  function getToken() { return localStorage.getItem('access_token'); }
+
+  function authHeaders() {
+    const t = getToken();
+    return t ? { 'Authorization': 'Bearer ' + t } : {};
+  }
+
+  function apiFetch(url, options = {}) {
+    const headers = Object.assign({ 'Content-Type': 'application/json' }, authHeaders(), options.headers || {});
+    return fetch(url, Object.assign({}, options, { headers })).then(res => {
+      if (res.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('current_user');
+        window.location.replace('/login.html');
+      }
+      return res;
+    });
+  }
+
+  function logout() {
+    const refresh = localStorage.getItem('refresh_token');
+    if (refresh) {
+      fetch('/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refresh }),
+      }).catch(() => {});
+    }
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('current_user');
+    window.location.replace('/login.html');
+  }
+
+  function showUserBadge() {
+    try {
+      const user = JSON.parse(localStorage.getItem('current_user') || '{}');
+      if (user.email) {
+        document.getElementById('nav-user-name').textContent = user.full_name || user.email;
+        document.getElementById('nav-role-pill').textContent = user.role || '';
+      }
+    } catch (_) {}
+  }
+
   // ── State ──────────────────────────────────────────────────────────────────
   let deals = [];
   let contacts = [];
@@ -541,24 +632,29 @@
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
   async function init() {
+    if (!getToken()) {
+      window.location.replace('/login.html');
+      return;
+    }
+    showUserBadge();
     await Promise.all([loadDeals(), loadContacts(), loadForecast(), loadToday(), loadSavedViews()]);
     renderKanban();
     renderContacts();
   }
 
   async function loadDeals() {
-    const res = await fetch('/deals');
+    const res = await apiFetch('/deals');
     deals = await res.json();
   }
 
   async function loadContacts() {
-    const res = await fetch('/contacts');
+    const res = await apiFetch('/contacts');
     contacts = await res.json();
   }
 
   async function loadForecast() {
     try {
-      const res = await fetch('/forecast');
+      const res = await apiFetch('/forecast');
       if (!res.ok) return;
       const data = await res.json();
       const panel = document.getElementById('forecast-panel');
@@ -570,7 +666,7 @@
 
   async function loadToday() {
     try {
-      const res = await fetch('/reminders/today');
+      const res = await apiFetch('/reminders/today');
       if (!res.ok) return;
       const items = await res.json();
       renderToday(items);
@@ -672,9 +768,8 @@
     const deal = deals.find(d => d.id === draggedDealId);
     if (!deal || deal.stage === newStage) return;
 
-    const res = await fetch(`/deals/${draggedDealId}/stage`, {
+    const res = await apiFetch(`/deals/${draggedDealId}/stage`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stage: newStage }),
     });
 
@@ -742,9 +837,8 @@
     if (!title) { showToast('Title is required'); return; }
     if (!contactId) { showToast('Please select a contact'); return; }
 
-    const res = await fetch('/deals', {
+    const res = await apiFetch('/deals', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, contact_id: contactId, value }),
     });
 
@@ -782,9 +876,8 @@
     if (phone) body.phone = phone;
     if (company) body.company = company;
 
-    const res = await fetch('/contacts', {
+    const res = await apiFetch('/contacts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 
@@ -831,7 +924,7 @@
   }
 
   async function dismissReminder(id) {
-    const res = await fetch(`/reminders/${id}/dismiss`, { method: 'PATCH' });
+    const res = await apiFetch(`/reminders/${id}/dismiss`, { method: 'PATCH' });
     if (!res.ok) { showToast('Failed to dismiss reminder'); return; }
     const row = document.getElementById('reminder-row-' + id);
     if (row) row.remove();
@@ -844,7 +937,7 @@
   // ── Saved views ────────────────────────────────────────────────────────────
   async function loadSavedViews() {
     try {
-      const res = await fetch('/saved-views');
+      const res = await apiFetch('/saved-views');
       if (!res.ok) return;
       savedViews = await res.json();
       renderSavedViews('contacts');
@@ -879,7 +972,7 @@
 
   async function applySavedView(viewId, entityType, viewName) {
     try {
-      const res = await fetch(`/saved-views/${viewId}/apply`, { method: 'POST' });
+      const res = await apiFetch(`/saved-views/${viewId}/apply`, { method: 'POST' });
       if (!res.ok) { showToast('Failed to apply view'); return; }
       const results = await res.json();
       const labelEl = document.getElementById(entityType + '-sv-active-label');
@@ -909,7 +1002,7 @@
   // ── Stats ──────────────────────────────────────────────────────────────────
   async function loadStats() {
     try {
-      const res = await fetch('/stats');
+      const res = await apiFetch('/stats');
       if (!res.ok) return;
       const s = await res.json();
       renderStats(s);

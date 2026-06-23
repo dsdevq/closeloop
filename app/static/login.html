@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloseLoop — Sign In</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    nav {
+      background: #1a1a2e;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      padding: 0 1.5rem;
+      height: 52px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    }
+    nav h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: .03em; }
+
+    .login-wrapper {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    .login-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.1);
+      padding: 2rem;
+      width: 100%;
+      max-width: 380px;
+      animation: slideIn .2s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .login-card h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: .25rem;
+      color: #1a1a2e;
+    }
+    .login-card p {
+      font-size: .85rem;
+      color: #666;
+      margin-bottom: 1.5rem;
+    }
+
+    .field { margin-bottom: 1rem; }
+    .field label {
+      display: block;
+      font-size: .78rem;
+      font-weight: 600;
+      color: #444;
+      margin-bottom: .3rem;
+    }
+    .field input {
+      border: 1.5px solid #d1d5db;
+      border-radius: 7px;
+      font-size: .875rem;
+      padding: .55rem .7rem;
+      width: 100%;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus { border-color: #6366f1; }
+
+    .btn-login {
+      background: #6366f1;
+      border: none;
+      border-radius: 7px;
+      color: #fff;
+      cursor: pointer;
+      font-size: .9rem;
+      font-weight: 600;
+      padding: .6rem 1rem;
+      transition: background .15s;
+      width: 100%;
+      margin-top: .5rem;
+    }
+    .btn-login:hover { background: #4f46e5; }
+    .btn-login:disabled { background: #a5b4fc; cursor: not-allowed; }
+
+    .error-msg {
+      background: #fef2f2;
+      border: 1px solid #fca5a5;
+      border-radius: 7px;
+      color: #b91c1c;
+      font-size: .82rem;
+      margin-top: .75rem;
+      padding: .55rem .75rem;
+      display: none;
+    }
+    .error-msg.show { display: block; }
+
+    .version {
+      text-align: center;
+      font-size: .72rem;
+      color: #bbb;
+      margin-top: 1.25rem;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <h1>CloseLoop CRM</h1>
+</nav>
+
+<div class="login-wrapper">
+  <div class="login-card">
+    <h2>Sign in</h2>
+    <p>Enter your credentials to access CloseLoop.</p>
+
+    <form id="login-form" onsubmit="handleLogin(event)">
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+      </div>
+      <button type="submit" class="btn-login" id="submit-btn">Sign in</button>
+      <div class="error-msg" id="error-msg"></div>
+    </form>
+
+    <div class="version">v1.0</div>
+  </div>
+</div>
+
+<script>
+  // If already authenticated, redirect to main app
+  (function () {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      window.location.replace('/index.html');
+    }
+  })();
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('submit-btn');
+    const errEl = document.getElementById('error-msg');
+
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    errEl.classList.remove('show');
+
+    try {
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showError(data.detail || 'Invalid email or password');
+        return;
+      }
+
+      const data = await res.json();
+      localStorage.setItem('access_token', data.access_token);
+      localStorage.setItem('refresh_token', data.refresh_token);
+      localStorage.setItem('current_user', JSON.stringify(data.user));
+      window.location.replace('/index.html');
+    } catch (_) {
+      showError('Network error — could not reach the server');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sign in';
+    }
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+</script>
+</body>
+</html>

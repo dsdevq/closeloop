@@ -5,7 +5,8 @@
 ## Stack
 
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.x (ORM), SQLite (`closeloop.db`)
-- **Frontend:** Single-file vanilla HTML/CSS/JS at `app/static/index.html` — no build step, no bundler, no CDN
+- **Auth:** `pyjwt>=2.8.0` (HS256 JWT) + `passlib[bcrypt]>=1.7.4` (password hashing)
+- **Frontend:** Vanilla HTML/CSS/JS — `app/static/index.html` (main app) + `app/static/login.html` (auth) — no build step, no bundler, no CDN
 - **Tests:** pytest, `httpx`-backed Starlette `TestClient`
 - **Zero external services** — no email, no network calls at runtime
 
@@ -29,11 +30,13 @@ pip install -q -r requirements.txt && python -m pytest -q
 
 ```
 app/
-  main.py        — app creation, middleware, router registration, static mount
+  main.py        — app creation, middleware, router registration, static mount, seed+backfill
   database.py    — engine, SessionLocal, Base, get_db
-  models.py      — all SQLAlchemy ORM models (incl. Tag, ContactTag, DealTag)
+  dependencies.py— get_current_user (Bearer JWT → User), require_admin              [v1]
+  models.py      — all SQLAlchemy ORM models (incl. User, RefreshToken, Tag, ContactTag, DealTag)
   core/          — pure functions only, zero I/O
     clock.py     — Clock class + get_clock FastAPI dependency
+    security.py  — hash_password, verify_password, create_access_token, create_refresh_token, decode_token [v1]
     stages.py    — stage state machine
     forecast.py  — weighted_forecast, stage_forecast, forecast_scenarios        [M3+M5]
     lead_score.py— compute_lead_score (v1) + compute_lead_score_v2 (decay)     [M3+M5]
@@ -42,15 +45,18 @@ app/
     recurrence.py— expand_rrule (daily/weekly/monthly RRULE-lite)              [M5]
   routers/       — thin HTTP handlers; one file per resource
     health.py, contacts.py, deals.py, activities.py, reminders.py, forecast.py
+    auth.py        — /auth/register, /login, /refresh, /logout, /me, /users    [v1]
     saved_views.py — /saved-views CRUD + /{id}/apply                          [M4]
     outbox.py      — /outbox queue + POST /digest                             [M4+M5]
     stats.py       — /stats aggregate metrics                                  [M4]
     tags.py        — /tags CRUD + /tags/contacts/{id} + /tags/deals/{id}      [M5]
   static/
-    index.html   — the entire frontend (tabs: Pipeline, Contacts, Today, Stats) [M4]
+    login.html   — JWT sign-in form; stores tokens in localStorage             [v1]
+    index.html   — main app (tabs: Pipeline, Contacts, Today, Stats); apiFetch + user badge [v1]
 tests/
-  conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override)
+  conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override, seeded admin+token)
   test_*.py      — one file per concern
+  test_auth.py   — auth/role tests (register, login, refresh, logout, 401/403, rep isolation) [v1]
 ```
 
 ## Conventions
@@ -84,6 +90,34 @@ tests/
 - Tab switching: use `data-tab="name"` attribute on `<button class="tab">` — `showTab(name)` reads it with `querySelector('[data-tab="${name}"]')`
 - All user-supplied content goes through `escHtml()` before insertion into innerHTML
 - `fetch` errors show a toast via `showToast(msg)` — never throw to console unhandled
+
+## Auth layer (v1)
+
+### JWT strategy
+- **HS256** with secret from `JWT_SECRET_KEY` env var (defaults to a dev placeholder — change in production).
+- **Access token:** 30-minute TTL. Signed payload: `{sub: user_id, type: "access"}`.
+- **Refresh token:** 7-day TTL. Stored in `refresh_tokens` table with `revoked_at` for revocation. Rotated on every `/auth/refresh` call.
+- `decode_token()` in `app/core/security.py` raises `jwt.ExpiredSignatureError` or `jwt.InvalidTokenError` on failure.
+- `get_current_user` in `app/dependencies.py` resolves Bearer token → live `User` row; raises HTTP 401 on any failure.
+
+### Seed credentials
+- On first startup (no users in DB): creates `admin@closeloop.com` / `admin123` (role=admin) and prints to stdout.
+- Backfills `owner_id` on any existing `contacts`, `deals`, `activities` rows to the seed admin.
+- **Change password immediately after first login in production.**
+
+### Role model
+| Role | Access |
+|------|--------|
+| `admin` | All records + user management (`GET /auth/users`, `POST /auth/register` for others) |
+| `manager` | All records; cannot manage users |
+| `rep` | Own records only — `owner_id == user.id` filter on contacts, deals, activities |
+
+### Owner_id migration
+- `ALTER TABLE contacts/deals/activities ADD COLUMN owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL` runs idempotently in `_run_migrations()` at startup. Safe to re-run — duplicate-column error is suppressed.
+
+### Test fixture pattern
+- `tests/conftest.py` seeds an admin user in the in-memory DB and passes `Authorization: Bearer <token>` as default headers to `TestClient`. All 305 pre-existing tests remain unmodified.
+- `tests/test_auth.py` defines its own `fresh_setup` / `admin_setup` fixtures for isolated auth-flow testing without the default admin token.
 
 ## Key decisions (summary — see DECISIONS.md for full rationale)
 
@@ -129,6 +163,7 @@ tests/
 | M3 | ✅ Done | Activities, reminders, forecast, lead score, Today tab |
 | M4 | ✅ Done | Filter AST, saved views, outbox queue, stats dashboard |
 | M5 | ✅ Done | All 8 post-MVP features: scenarios, lead-score v2, CSV import/export, recurrence, tags, digest, rotting alerts |
+| v1 | ✅ Done | Auth + user roles (JWT, bcrypt, register/login/refresh/logout, owner_id, rep/manager/admin enforcement, login.html) |
 
 ## M4 gotchas
 
