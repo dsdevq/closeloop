@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from app.core.clock import Clock, get_clock
 from app.core.lead_score import compute_lead_score
 from app.database import get_db
-from app.models import Activity, Contact, Deal
+from app.dependencies import get_current_user
+from app.models import Activity, Contact, Deal, User
 
 router = APIRouter(prefix="/contacts")
 
@@ -21,6 +22,7 @@ class ContactCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     company: Optional[str] = None
+    account_id: Optional[int] = None
 
 
 class ContactUpdate(BaseModel):
@@ -28,6 +30,7 @@ class ContactUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     company: Optional[str] = None
+    account_id: Optional[int] = None
 
 
 class ContactOut(BaseModel):
@@ -49,9 +52,17 @@ def _to_out(c: Contact) -> dict:
         "email": c.email,
         "phone": c.phone,
         "company": c.company,
+        "account_id": c.account_id,
         "lead_score": c.lead_score,
         "created_at": c.created_at,
     }
+
+
+def _apply_owner_filter(query, user: User):
+    """Restrict to user's own records when role is rep."""
+    if user.role == "rep":
+        return query.filter(Contact.owner_id == user.id)
+    return query
 
 
 @router.post("", status_code=201)
@@ -59,6 +70,7 @@ def create_contact(
     body: ContactCreate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     now = clk.now().isoformat()
     contact = Contact(
@@ -66,7 +78,9 @@ def create_contact(
         email=body.email,
         phone=body.phone,
         company=body.company,
+        account_id=body.account_id,
         lead_score=0.0,
+        owner_id=current_user.id,
         created_at=now,
         updated_at=now,
     )
@@ -77,8 +91,12 @@ def create_contact(
 
 
 @router.get("")
-def list_contacts(db: Session = Depends(get_db)):
-    contacts = db.query(Contact).all()
+def list_contacts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = _apply_owner_filter(db.query(Contact), current_user)
+    contacts = query.all()
     return [_to_out(c) for c in contacts]
 
 
@@ -88,9 +106,13 @@ _VALID_SOURCES = {"referral", "inbound", "outbound", "event", "other"}
 
 
 @router.get("/export")
-def export_contacts(db: Session = Depends(get_db)):
-    """Export all contacts as a CSV file."""
-    contacts = db.query(Contact).all()
+def export_contacts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export contacts as a CSV file (respects ownership for reps)."""
+    query = _apply_owner_filter(db.query(Contact), current_user)
+    contacts = query.all()
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=_CSV_EXPORT_FIELDS)
     writer.writeheader()
@@ -109,6 +131,7 @@ def import_contacts(
     body: dict,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Import contacts from CSV text.
@@ -146,6 +169,7 @@ def import_contacts(
             company=company,
             source=source,
             lead_score=0.0,
+            owner_id=current_user.id,
             created_at=now,
             updated_at=now,
         )
@@ -162,8 +186,13 @@ def import_contacts(
 
 
 @router.get("/{contact_id}")
-def get_contact(contact_id: int, db: Session = Depends(get_db)):
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+def get_contact(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = _apply_owner_filter(db.query(Contact), current_user)
+    contact = query.filter(Contact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     return _to_out(contact)
@@ -175,8 +204,10 @@ def update_contact(
     body: ContactUpdate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    query = _apply_owner_filter(db.query(Contact), current_user)
+    contact = query.filter(Contact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     updates = body.model_dump(exclude_unset=True)
@@ -189,8 +220,13 @@ def update_contact(
 
 
 @router.delete("/{contact_id}", status_code=204)
-def delete_contact(contact_id: int, db: Session = Depends(get_db)):
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+def delete_contact(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = _apply_owner_filter(db.query(Contact), current_user)
+    contact = query.filter(Contact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     db.delete(contact)
@@ -203,8 +239,10 @@ def get_lead_score(
     contact_id: int,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
-    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    query = _apply_owner_filter(db.query(Contact), current_user)
+    contact = query.filter(Contact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 

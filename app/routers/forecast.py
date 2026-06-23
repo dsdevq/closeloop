@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.forecast import forecast_scenarios, stage_forecast, weighted_forecast
 from app.database import get_db
-from app.models import Deal
+from app.dependencies import get_current_user
+from app.models import Deal, User
 
 router = APIRouter(prefix="/forecast")
 
@@ -19,7 +20,10 @@ def _deal_dicts(db: Session) -> list[dict]:
 
 
 @router.get("")
-def get_forecast(db: Session = Depends(get_db)):
+def get_forecast(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     deals = _deal_dicts(db)
     return {
         "total": weighted_forecast(deals),
@@ -35,6 +39,7 @@ class ScenariosRequest(BaseModel):
 def get_forecast_scenarios(
     body: ScenariosRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Return best/expected/worst forecast scenarios, plus optional custom probability map."""
     deals = _deal_dicts(db)

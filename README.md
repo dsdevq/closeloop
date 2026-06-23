@@ -1,6 +1,8 @@
 # CloseLoop
 
-Self-contained CRM — FastAPI backend, single-file vanilla JS frontend, SQLite storage.
+Self-contained CRM — FastAPI backend, current vanilla JS static frontend, SQLite storage.
+
+Frontend direction: the current vanilla UI is MVP scaffolding. Rich UI work should move to React + Vite + TypeScript + Tailwind rather than expanding the single-file static app.
 
 ## Quick start (local)
 

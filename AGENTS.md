@@ -5,8 +5,10 @@
 ## Stack
 
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.x (ORM), SQLite (`closeloop.db`)
-- **Frontend:** Single-file vanilla HTML/CSS/JS at `app/static/index.html` — no build step, no bundler, no CDN
-- **Tests:** pytest, `httpx2`-backed Starlette `TestClient` (Starlette 1.3+ uses `httpx2`, not `httpx`)
+- **Auth:** `pyjwt>=2.8.0` (HS256 JWT) + `bcrypt>=4.0.0` (password hashing)
+- **Frontend (current):** Vanilla HTML/CSS/JS — `app/static/index.html` (main app) + `app/static/login.html` (auth) — no build step, no bundler, no CDN
+- **Frontend (target):** React + Vite + TypeScript + Tailwind. Treat the current vanilla UI as MVP scaffolding; do not deepen it for rich UI work.
+- **Tests:** pytest, `httpx`-backed Starlette `TestClient`
 - **Zero external services** — no email, no network calls at runtime
 
 ## How to run / test
@@ -32,11 +34,14 @@ pip install -q -r requirements.txt && python -m pytest -q
 
 ```
 app/
-  main.py        — app creation, middleware, router registration, static mount
+  main.py        — app creation, middleware, router registration, static mount, seed+backfill
   database.py    — engine, SessionLocal, Base, get_db
-  models.py      — all SQLAlchemy ORM models (incl. Tag, ContactTag, DealTag)
+  dependencies.py— get_current_user (Bearer JWT → User), require_admin              [v1]
+  models.py      — all SQLAlchemy ORM models (incl. User, RefreshToken, Tag, ContactTag, DealTag,
+                   Account, PipelineStage)                                           [v2]
   core/          — pure functions only, zero I/O
     clock.py     — Clock class + get_clock FastAPI dependency
+    security.py  — hash_password, verify_password, create_access_token, create_refresh_token, decode_token [v1]
     stages.py    — stage state machine
     forecast.py  — weighted_forecast, stage_forecast, forecast_scenarios        [M3+M5]
     lead_score.py— compute_lead_score (v1) + compute_lead_score_v2 (decay)     [M3+M5]
@@ -45,15 +50,23 @@ app/
     recurrence.py— expand_rrule (daily/weekly/monthly RRULE-lite)              [M5]
   routers/       — thin HTTP handlers; one file per resource
     health.py, contacts.py, deals.py, activities.py, reminders.py, forecast.py
+    auth.py        — /auth/register, /login, /refresh, /logout, /me, /users    [v1]
     saved_views.py — /saved-views CRUD + /{id}/apply                          [M4]
     outbox.py      — /outbox queue + POST /digest                             [M4+M5]
     stats.py       — /stats aggregate metrics                                  [M4]
     tags.py        — /tags CRUD + /tags/contacts/{id} + /tags/deals/{id}      [M5]
+    accounts.py    — /accounts CRUD; rep sees own, manager/admin see all       [v2]
+    pipeline.py    — /pipeline/stages CRUD; write is admin/manager only        [v2]
   static/
-    index.html   — the entire frontend (tabs: Pipeline, Contacts, Today, Stats) [M4]
+    login.html   — JWT sign-in form; stores tokens in localStorage             [v1]
+    index.html   — main app (tabs: Pipeline, Contacts, Accounts, Today, Stats);
+                   dynamic kanban using pipeline stages API; v2.0               [v2]
 tests/
-  conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override)
+  conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override, seeded admin+token)
   test_*.py      — one file per concern
+  test_auth.py   — auth/role tests (register, login, refresh, logout, 401/403, rep isolation) [v1]
+  test_accounts.py  — account CRUD, contact-account linking, role enforcement  [v2]
+  test_pipeline.py  — pipeline stage CRUD, deal stage_id PATCH, 409 on delete  [v2]
 ```
 
 ## Conventions
@@ -88,6 +101,34 @@ tests/
 - All user-supplied content goes through `escHtml()` before insertion into innerHTML
 - `fetch` errors show a toast via `showToast(msg)` — never throw to console unhandled
 
+## Auth layer (v1)
+
+### JWT strategy
+- **HS256** with secret from `JWT_SECRET_KEY` env var (defaults to a dev placeholder — change in production).
+- **Access token:** 30-minute TTL. Signed payload: `{sub: user_id, type: "access"}`.
+- **Refresh token:** 7-day TTL. Stored in `refresh_tokens` table with `revoked_at` for revocation. Rotated on every `/auth/refresh` call.
+- `decode_token()` in `app/core/security.py` raises `jwt.ExpiredSignatureError` or `jwt.InvalidTokenError` on failure.
+- `get_current_user` in `app/dependencies.py` resolves Bearer token → live `User` row; raises HTTP 401 on any failure.
+
+### Seed credentials
+- On first startup (no users in DB): creates `admin@closeloop.com` / `admin123` (role=admin) and prints to stdout.
+- Backfills `owner_id` on any existing `contacts`, `deals`, `activities` rows to the seed admin.
+- **Change password immediately after first login in production.**
+
+### Role model
+| Role | Access |
+|------|--------|
+| `admin` | All records + user management (`GET /auth/users`, `POST /auth/register` for others) |
+| `manager` | All records; cannot manage users |
+| `rep` | Own records only — `owner_id == user.id` filter on contacts, deals, activities |
+
+### Owner_id migration
+- `ALTER TABLE contacts/deals/activities ADD COLUMN owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL` runs idempotently in `_run_migrations()` at startup. Safe to re-run — duplicate-column error is suppressed.
+
+### Test fixture pattern
+- `tests/conftest.py` seeds an admin user in the in-memory DB and passes `Authorization: Bearer <token>` as default headers to `TestClient`. All 305 pre-existing tests remain unmodified.
+- `tests/test_auth.py` defines its own `fresh_setup` / `admin_setup` fixtures for isolated auth-flow testing without the default admin token.
+
 ## Key decisions (summary — see DECISIONS.md for full rationale)
 
 | # | Decision |
@@ -119,6 +160,10 @@ tests/
 - **`compute_lead_score` clock param** — when calling from a router, pass `clk.now` (bound method), not `clk.now()` (a datetime value). The function calls `clock()` internally.
 - **`test_forecast_empty_pipeline` test** — the `pass` body is intentional: the endpoint is exercised implicitly by other tests; an empty-pipeline call would need a standalone client fixture to be isolated.
 
+## Docs
+
+- `docs/DOMAIN.md` — CRM domain best-practices brief (Part A) + CloseLoop honest assessment and proposed v1–v6 roadmap (Part B). Not app code — read it before scoping any new feature version.
+
 ## Milestones
 
 | M | Status | What it delivered |
@@ -128,6 +173,8 @@ tests/
 | M3 | ✅ Done | Activities, reminders, forecast, lead score, Today tab |
 | M4 | ✅ Done | Filter AST, saved views, outbox queue, stats dashboard |
 | M5 | ✅ Done | All 8 post-MVP features: scenarios, lead-score v2, CSV import/export, recurrence, tags, digest, rotting alerts |
+| v1 | ✅ Done | Auth + user roles (JWT, bcrypt, register/login/refresh/logout, owner_id, rep/manager/admin enforcement, login.html) |
+| v2 | ✅ Done | Accounts/Companies layer + Customizable Pipeline Stages (see below) |
 
 ## M4 gotchas
 
@@ -136,6 +183,42 @@ tests/
 - **`stats.py` imports `Callable`** — unused after refactor; the clock is accessed via `clk.now` (bound method, callable). Keep the pattern consistent with other routers.
 - **Filter AST `missing field → neq is True`** — a record without the field at all is treated as "missing" (falsy for eq/gt/etc.), but `neq` returns True because the field value is indeed "not equal" to any specified value.
 - **`POST /saved-views/{id}/apply`** fetches all rows in Python and evaluates the AST in-process. Acceptable for small datasets; not SQL-push-down.
+
+## v2 — Accounts + Pipeline Stages
+
+### New models
+- **Account** (`accounts` table) — id, name, domain, industry, website, phone, address, owner_id FK→users, created_at, updated_at. Rep sees own; manager/admin see all.
+- **PipelineStage** (`pipeline_stages` table) — id, name, position (ordering), probability (0–100 int), is_default (bool as int), created_at. 6 default stages seeded at startup if table is empty.
+- **Contact.account_id** — nullable FK→accounts (SET NULL on delete). Allows a contact to belong to a company.
+- **Deal.stage_id** — nullable FK→pipeline_stages (SET NULL on delete). Replaces the legacy free-text `stage` field for kanban placement; `stage` (string) kept for backward compat.
+- **Deal.probability** — existing float field (0.0–1.0). Inherited from `PipelineStage.probability / 100` on stage_id change, but overridable per deal.
+
+### New routes
+- `GET/POST/PATCH/DELETE /accounts` — account CRUD; rep scope = own.
+- `GET /pipeline/stages` — list all stages ordered by position; auth required.
+- `POST/PATCH/DELETE /pipeline/stages/{id}` — admin or manager only; DELETE returns 409 if deals reference that stage (with count in detail).
+- `PATCH /deals/{id}` — extended to accept `stage_id` and/or `probability`; sets `stage_id`, syncs legacy `stage` field to `PipelineStage.name`, auto-inherits probability unless overridden.
+
+### Migration notes
+- `_run_migrations()` in main.py runs idempotent `ALTER TABLE` to add `account_id` to contacts and `stage_id` to deals.
+- `_seed_pipeline_stages()` seeds 6 default stages and then backfills `deal.stage_id` from legacy `deal.stage` string via `_STAGE_NAME_MAP`.
+- In tests, `conftest.py` does NOT call lifespan (and therefore does NOT seed pipeline stages). Tests that need stages must insert them directly via the API or `PipelineStage` model.
+
+### Frontend (index.html v2.0)
+- Added Accounts tab: account list table (name, domain, industry, # contacts, owner_id) + detail panel (meta fields + linked contacts table) + New Account modal.
+- Contacts table gains an Account column with a click-through link (calls `goToAccount(id)`).
+- Kanban now loads stages dynamically from `GET /pipeline/stages` and places deals by `deal.stage_id`. If stages table is empty the kanban shows a placeholder message.
+- Drag-and-drop PATCH now sends `{ stage_id: <id> }` to `PATCH /deals/{id}` (instead of the legacy `/stage` endpoint).
+- Version label updated to v2.0.
+
+### Key decisions (v2)
+| # | Decision |
+|---|----------|
+| D18 | `deal.stage` (legacy string) stays in place for backward compat; `deal.stage_id` is the authoritative field for v2 kanban. Both are kept in sync on PATCH. |
+| D19 | Pipeline stage `probability` stored as 0–100 integer; converted to 0.0–1.0 float before writing to `deal.probability` so existing probability-based code is unaffected. |
+| D20 | Stage DELETE returns 409 (not 422) when deals exist — 409 Conflict is the correct HTTP semantics for "resource state conflict". |
+| D21 | Manager role can create/update/delete pipeline stages (same as admin) — stage configuration is an operations concern, not just superadmin. |
+| D22 | In tests, pipeline stages are NOT auto-seeded (no lifespan). Tests that need them must create them via `POST /pipeline/stages` or insert `PipelineStage` rows directly. |
 
 ## M5 gotchas
 

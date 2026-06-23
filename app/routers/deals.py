@@ -11,7 +11,8 @@ from app.core.clock import Clock, get_clock
 from app.core.stages import stage_probability, validate_transition
 from app.core.velocity import is_deal_rotting, stage_sla_days, time_in_stage_hours
 from app.database import get_db
-from app.models import Contact, Deal, StageTransition
+from app.dependencies import get_current_user
+from app.models import Contact, Deal, PipelineStage, StageTransition, User
 
 router = APIRouter(prefix="/deals")
 
@@ -26,6 +27,8 @@ class DealUpdate(BaseModel):
     title: Optional[str] = None
     value: Optional[float] = None
     contact_id: Optional[int] = None
+    stage_id: Optional[int] = None
+    probability: Optional[float] = None
 
 
 class DealStageUpdate(BaseModel):
@@ -36,12 +39,15 @@ def _to_out(deal: Deal, contact_name: Optional[str] = None) -> dict:
     name = contact_name if contact_name is not None else (
         deal.contact.name if deal.contact else None
     )
+    stage_name = deal.pipeline_stage.name if deal.pipeline_stage else None
     return {
         "id": deal.id,
         "title": deal.title,
         "contact_id": deal.contact_id,
         "contact_name": name,
         "stage": deal.stage,
+        "stage_id": deal.stage_id,
+        "stage_name": stage_name,
         "value": deal.value,
         "probability": deal.probability,
         "created_at": deal.created_at,
@@ -49,11 +55,19 @@ def _to_out(deal: Deal, contact_name: Optional[str] = None) -> dict:
     }
 
 
+def _apply_owner_filter(query, user: User):
+    """Restrict to user's own deals when role is rep."""
+    if user.role == "rep":
+        return query.filter(Deal.owner_id == user.id)
+    return query
+
+
 @router.post("", status_code=201)
 def create_deal(
     body: DealCreate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     contact = db.query(Contact).filter(Contact.id == body.contact_id).first()
     if not contact:
@@ -67,6 +81,7 @@ def create_deal(
         stage="lead",
         value=body.value,
         probability=prob,
+        owner_id=current_user.id,
         created_at=now,
         updated_at=now,
     )
@@ -86,8 +101,12 @@ def create_deal(
 
 
 @router.get("")
-def list_deals(stage: Optional[str] = None, db: Session = Depends(get_db)):
-    query = db.query(Deal)
+def list_deals(
+    stage: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = _apply_owner_filter(db.query(Deal), current_user)
     if stage is not None:
         query = query.filter(Deal.stage == stage)
     deals = query.all()
@@ -99,9 +118,13 @@ _DEAL_VALID_STAGES = {"lead", "qualified", "proposal", "negotiation", "won", "lo
 
 
 @router.get("/export")
-def export_deals(db: Session = Depends(get_db)):
-    """Export all deals as a CSV file."""
-    deals = db.query(Deal).all()
+def export_deals(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export deals as a CSV file (respects ownership for reps)."""
+    query = _apply_owner_filter(db.query(Deal), current_user)
+    deals = query.all()
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=_DEAL_CSV_EXPORT_FIELDS)
     writer.writeheader()
@@ -120,6 +143,7 @@ def import_deals(
     body: dict,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Import deals from CSV text.
@@ -175,6 +199,7 @@ def import_deals(
             stage=stage,
             probability=prob,
             currency=currency,
+            owner_id=current_user.id,
             created_at=now,
             updated_at=now,
         )
@@ -198,6 +223,7 @@ def import_deals(
 def get_rotting_deals(
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Return all open deals that have been stagnant in their current stage
@@ -208,7 +234,8 @@ def get_rotting_deals(
     _TERMINAL = {"won", "lost"}
     sla = stage_sla_days()
 
-    open_deals = db.query(Deal).filter(Deal.stage.notin_(list(_TERMINAL))).all()
+    query = _apply_owner_filter(db.query(Deal), current_user)
+    open_deals = query.filter(Deal.stage.notin_(list(_TERMINAL))).all()
     result = []
     for deal in open_deals:
         trans = [
@@ -227,8 +254,13 @@ def get_rotting_deals(
 
 
 @router.get("/{deal_id}")
-def get_deal(deal_id: int, db: Session = Depends(get_db)):
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+def get_deal(
+    deal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = _apply_owner_filter(db.query(Deal), current_user)
+    deal = query.filter(Deal.id == deal_id).first()
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
     return _to_out(deal)
@@ -240,8 +272,10 @@ def update_deal_stage(
     body: DealStageUpdate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    query = _apply_owner_filter(db.query(Deal), current_user)
+    deal = query.filter(Deal.id == deal_id).first()
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
 
@@ -280,8 +314,10 @@ def update_deal(
     body: DealUpdate,
     db: Session = Depends(get_db),
     clk: Clock = Depends(get_clock),
+    current_user: User = Depends(get_current_user),
 ):
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    query = _apply_owner_filter(db.query(Deal), current_user)
+    deal = query.filter(Deal.id == deal_id).first()
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
 
@@ -290,6 +326,16 @@ def update_deal(
         contact = db.query(Contact).filter(Contact.id == updates["contact_id"]).first()
         if not contact:
             raise HTTPException(status_code=404, detail="Contact not found")
+
+    if "stage_id" in updates:
+        ps = db.query(PipelineStage).filter(PipelineStage.id == updates["stage_id"]).first()
+        if not ps:
+            raise HTTPException(status_code=404, detail="Pipeline stage not found")
+        deal.stage_id = ps.id
+        deal.stage = ps.name
+        if "probability" not in updates:
+            deal.probability = ps.probability / 100.0
+        updates.pop("stage_id")
 
     for field, value in updates.items():
         setattr(deal, field, value)
@@ -300,8 +346,13 @@ def update_deal(
 
 
 @router.delete("/{deal_id}", status_code=204)
-def delete_deal(deal_id: int, db: Session = Depends(get_db)):
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+def delete_deal(
+    deal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = _apply_owner_filter(db.query(Deal), current_user)
+    deal = query.filter(Deal.id == deal_id).first()
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
     db.delete(deal)
