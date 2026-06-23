@@ -116,6 +116,10 @@ tests/
 - **`compute_lead_score` clock param** — when calling from a router, pass `clk.now` (bound method), not `clk.now()` (a datetime value). The function calls `clock()` internally.
 - **`test_forecast_empty_pipeline` test** — the `pass` body is intentional: the endpoint is exercised implicitly by other tests; an empty-pipeline call would need a standalone client fixture to be isolated.
 
+## Docs
+
+- `docs/DOMAIN.md` — CRM domain best-practices brief (Part A) + CloseLoop honest assessment and proposed v1–v6 roadmap (Part B). Not app code — read it before scoping any new feature version.
+
 ## Milestones
 
 | M | Status | What it delivered |
