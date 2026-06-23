@@ -4,6 +4,38 @@ All notable changes to CloseLoop are documented here.
 
 ---
 
+## [v2.0] — 2026-06-23
+
+### Accounts (Companies) Layer + Customizable Pipeline Stages
+
+This release implements the v2 scope defined in [docs/DOMAIN.md](docs/DOMAIN.md) § "v2 — Accounts Layer + Pipeline Stages".
+
+#### Accounts / Companies
+
+- **Account model** — new `accounts` table: id, name, domain, industry, website, phone, address, owner_id FK→users, created_at, updated_at.
+- **CRUD endpoints** — `POST/GET/PATCH/DELETE /accounts`. Role rules: `rep` sees own (owner_id), `manager`/`admin` see all.
+- **Contact → Account link** — `account_id` FK (nullable, SET NULL) added to contacts so contacts can belong to a company.
+- **Account detail** — `GET /accounts/{id}` returns linked contacts inline.
+- **Frontend** — new Accounts tab: list table (name, domain, industry, # contacts, owner) + detail panel (meta + linked contacts) + New Account modal. Contacts table shows account name as a click-through link to the account detail.
+
+#### Customizable Pipeline Stages
+
+- **PipelineStage model** — new `pipeline_stages` table: id, name, position (ordering), probability (0–100 int), is_default, created_at.
+- **Default stages seeded on startup** (if table empty): Prospecting(0), Qualification(20), Proposal(50), Negotiation(75), Closed-Won(100), Closed-Lost(0).
+- **Read endpoint** — `GET /pipeline/stages` (auth required) returns all stages ordered by position.
+- **Admin/manager endpoints** — `POST /pipeline/stages`, `PATCH /pipeline/stages/{id}`, `DELETE /pipeline/stages/{id}`. Delete returns **409** with deal count if the stage has active deals.
+- **Deal.stage_id** — nullable FK to pipeline_stages added to deals. Existing rows backfilled from legacy `stage` string via name-map at startup.
+- **Deal PATCH extended** — `PATCH /deals/{id}` now accepts `stage_id` (and optional `probability` override). On stage_id change, `deal.probability` is inherited from `PipelineStage.probability / 100` unless explicitly overridden; legacy `deal.stage` field is kept in sync with `PipelineStage.name`.
+- **Dynamic kanban** — kanban columns now loaded from `GET /pipeline/stages` (no more hardcoded stage list). Drag-and-drop sends `{ stage_id }` to `PATCH /deals/{id}`.
+
+#### Technical notes
+
+- Column migrations: `ALTER TABLE contacts ADD COLUMN account_id` and `ALTER TABLE deals ADD COLUMN stage_id` run idempotently at startup.
+- All 324 pre-existing tests continue to pass; 38 new tests in `tests/test_accounts.py` and `tests/test_pipeline.py` (362 total).
+- Frontend version label updated to v2.0.
+
+---
+
 ## [v1.0] — 2026-06-23
 
 ### Authentication & User Roles

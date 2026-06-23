@@ -29,6 +29,39 @@ class RefreshToken(Base):
     user = relationship("User", back_populates="refresh_tokens")
 
 
+class Account(Base):
+    """A company / organisation that contacts belong to (B2B layer)."""
+    __tablename__ = "accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    domain = Column(String)
+    industry = Column(String)
+    website = Column(String)
+    phone = Column(String)
+    address = Column(String)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    contacts = relationship("Contact", back_populates="account")
+
+
+class PipelineStage(Base):
+    """Customisable deal pipeline stage."""
+    __tablename__ = "pipeline_stages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    position = Column(Integer, nullable=False)  # ordering; lowest first
+    probability = Column(Integer, nullable=False, default=0)  # 0–100 whole-number percent
+    is_default = Column(Integer, nullable=False, default=0)  # 1 = seeded default
+    created_at = Column(String, nullable=False)
+
+    deals = relationship("Deal", back_populates="pipeline_stage")
+
+
 class Contact(Base):
     __tablename__ = "contacts"
 
@@ -40,10 +73,12 @@ class Contact(Base):
     phone = Column(String)
     source = Column(String)  # referral/inbound/outbound/event/other
     lead_score = Column(Float, nullable=False, default=0.0)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="SET NULL"))
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)
 
+    account = relationship("Account", foreign_keys=[account_id], back_populates="contacts")
     owner = relationship("User", foreign_keys=[owner_id])
     deals = relationship("Deal", back_populates="contact")
     activities = relationship("Activity", back_populates="contact")
@@ -58,7 +93,8 @@ class Deal(Base):
     title = Column(String, nullable=False)
     amount = Column(Integer, nullable=False, default=0)  # cents (full PRD field, kept for M3+)
     currency = Column(String, nullable=False, default="USD")
-    stage = Column(String, nullable=False, default="lead")  # lead/qualified/proposal/negotiation/won/lost
+    stage = Column(String, nullable=False, default="lead")  # legacy string stage (backward compat)
+    stage_id = Column(Integer, ForeignKey("pipeline_stages.id", ondelete="SET NULL"))
     value = Column(Float, nullable=False, default=0.0)
     probability = Column(Float, nullable=False, default=0.0)
     expected_close_date = Column(String)
@@ -69,6 +105,7 @@ class Deal(Base):
 
     owner = relationship("User", foreign_keys=[owner_id])
     contact = relationship("Contact", back_populates="deals")
+    pipeline_stage = relationship("PipelineStage", back_populates="deals")
     stage_transitions = relationship("StageTransition", back_populates="deal", cascade="all, delete-orphan")
     activities = relationship("Activity", back_populates="deal", cascade="all, delete-orphan")
     tags = relationship("DealTag", back_populates="deal", cascade="all, delete-orphan")

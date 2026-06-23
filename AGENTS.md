@@ -33,7 +33,8 @@ app/
   main.py        — app creation, middleware, router registration, static mount, seed+backfill
   database.py    — engine, SessionLocal, Base, get_db
   dependencies.py— get_current_user (Bearer JWT → User), require_admin              [v1]
-  models.py      — all SQLAlchemy ORM models (incl. User, RefreshToken, Tag, ContactTag, DealTag)
+  models.py      — all SQLAlchemy ORM models (incl. User, RefreshToken, Tag, ContactTag, DealTag,
+                   Account, PipelineStage)                                           [v2]
   core/          — pure functions only, zero I/O
     clock.py     — Clock class + get_clock FastAPI dependency
     security.py  — hash_password, verify_password, create_access_token, create_refresh_token, decode_token [v1]
@@ -50,13 +51,18 @@ app/
     outbox.py      — /outbox queue + POST /digest                             [M4+M5]
     stats.py       — /stats aggregate metrics                                  [M4]
     tags.py        — /tags CRUD + /tags/contacts/{id} + /tags/deals/{id}      [M5]
+    accounts.py    — /accounts CRUD; rep sees own, manager/admin see all       [v2]
+    pipeline.py    — /pipeline/stages CRUD; write is admin/manager only        [v2]
   static/
     login.html   — JWT sign-in form; stores tokens in localStorage             [v1]
-    index.html   — main app (tabs: Pipeline, Contacts, Today, Stats); apiFetch + user badge [v1]
+    index.html   — main app (tabs: Pipeline, Contacts, Accounts, Today, Stats);
+                   dynamic kanban using pipeline stages API; v2.0               [v2]
 tests/
   conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override, seeded admin+token)
   test_*.py      — one file per concern
   test_auth.py   — auth/role tests (register, login, refresh, logout, 401/403, rep isolation) [v1]
+  test_accounts.py  — account CRUD, contact-account linking, role enforcement  [v2]
+  test_pipeline.py  — pipeline stage CRUD, deal stage_id PATCH, 409 on delete  [v2]
 ```
 
 ## Conventions
@@ -164,6 +170,7 @@ tests/
 | M4 | ✅ Done | Filter AST, saved views, outbox queue, stats dashboard |
 | M5 | ✅ Done | All 8 post-MVP features: scenarios, lead-score v2, CSV import/export, recurrence, tags, digest, rotting alerts |
 | v1 | ✅ Done | Auth + user roles (JWT, bcrypt, register/login/refresh/logout, owner_id, rep/manager/admin enforcement, login.html) |
+| v2 | ✅ Done | Accounts/Companies layer + Customizable Pipeline Stages (see below) |
 
 ## M4 gotchas
 
@@ -172,6 +179,42 @@ tests/
 - **`stats.py` imports `Callable`** — unused after refactor; the clock is accessed via `clk.now` (bound method, callable). Keep the pattern consistent with other routers.
 - **Filter AST `missing field → neq is True`** — a record without the field at all is treated as "missing" (falsy for eq/gt/etc.), but `neq` returns True because the field value is indeed "not equal" to any specified value.
 - **`POST /saved-views/{id}/apply`** fetches all rows in Python and evaluates the AST in-process. Acceptable for small datasets; not SQL-push-down.
+
+## v2 — Accounts + Pipeline Stages
+
+### New models
+- **Account** (`accounts` table) — id, name, domain, industry, website, phone, address, owner_id FK→users, created_at, updated_at. Rep sees own; manager/admin see all.
+- **PipelineStage** (`pipeline_stages` table) — id, name, position (ordering), probability (0–100 int), is_default (bool as int), created_at. 6 default stages seeded at startup if table is empty.
+- **Contact.account_id** — nullable FK→accounts (SET NULL on delete). Allows a contact to belong to a company.
+- **Deal.stage_id** — nullable FK→pipeline_stages (SET NULL on delete). Replaces the legacy free-text `stage` field for kanban placement; `stage` (string) kept for backward compat.
+- **Deal.probability** — existing float field (0.0–1.0). Inherited from `PipelineStage.probability / 100` on stage_id change, but overridable per deal.
+
+### New routes
+- `GET/POST/PATCH/DELETE /accounts` — account CRUD; rep scope = own.
+- `GET /pipeline/stages` — list all stages ordered by position; auth required.
+- `POST/PATCH/DELETE /pipeline/stages/{id}` — admin or manager only; DELETE returns 409 if deals reference that stage (with count in detail).
+- `PATCH /deals/{id}` — extended to accept `stage_id` and/or `probability`; sets `stage_id`, syncs legacy `stage` field to `PipelineStage.name`, auto-inherits probability unless overridden.
+
+### Migration notes
+- `_run_migrations()` in main.py runs idempotent `ALTER TABLE` to add `account_id` to contacts and `stage_id` to deals.
+- `_seed_pipeline_stages()` seeds 6 default stages and then backfills `deal.stage_id` from legacy `deal.stage` string via `_STAGE_NAME_MAP`.
+- In tests, `conftest.py` does NOT call lifespan (and therefore does NOT seed pipeline stages). Tests that need stages must insert them directly via the API or `PipelineStage` model.
+
+### Frontend (index.html v2.0)
+- Added Accounts tab: account list table (name, domain, industry, # contacts, owner_id) + detail panel (meta fields + linked contacts table) + New Account modal.
+- Contacts table gains an Account column with a click-through link (calls `goToAccount(id)`).
+- Kanban now loads stages dynamically from `GET /pipeline/stages` and places deals by `deal.stage_id`. If stages table is empty the kanban shows a placeholder message.
+- Drag-and-drop PATCH now sends `{ stage_id: <id> }` to `PATCH /deals/{id}` (instead of the legacy `/stage` endpoint).
+- Version label updated to v2.0.
+
+### Key decisions (v2)
+| # | Decision |
+|---|----------|
+| D18 | `deal.stage` (legacy string) stays in place for backward compat; `deal.stage_id` is the authoritative field for v2 kanban. Both are kept in sync on PATCH. |
+| D19 | Pipeline stage `probability` stored as 0–100 integer; converted to 0.0–1.0 float before writing to `deal.probability` so existing probability-based code is unaffected. |
+| D20 | Stage DELETE returns 409 (not 422) when deals exist — 409 Conflict is the correct HTTP semantics for "resource state conflict". |
+| D21 | Manager role can create/update/delete pipeline stages (same as admin) — stage configuration is an operations concern, not just superadmin. |
+| D22 | In tests, pipeline stages are NOT auto-seeded (no lifespan). Tests that need them must create them via `POST /pipeline/stages` or insert `PipelineStage` rows directly. |
 
 ## M5 gotchas
 
