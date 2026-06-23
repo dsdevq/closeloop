@@ -1,14 +1,20 @@
 # CloseLoop
 
-Self-contained CRM — FastAPI backend, current vanilla JS static frontend, SQLite storage.
+Self-contained CRM — FastAPI backend, React/Vite/Tailwind frontend, SQLite storage.
 
-Frontend direction: the current vanilla UI is MVP scaffolding. Rich UI work should move to React + Vite + TypeScript + Tailwind rather than expanding the single-file static app.
+The built frontend is served by FastAPI from `app/static`. Frontend source lives in `frontend/`.
 
 ## Quick start (local)
 
 ```bash
 # Install dependencies (Python 3.11+)
 pip install -r requirements.txt
+
+# Install frontend dependencies
+npm --prefix frontend install --include=dev
+
+# Build React frontend into app/static
+npm run build
 
 # Run from repo root — static UI served at /
 uvicorn app.main:app --reload
@@ -29,6 +35,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ```bash
 python -m pytest -q
+npm --prefix frontend run typecheck
+npm --prefix frontend run lint
+npm --prefix frontend run build
 ```
 
 The database file (`closeloop.db`) is created automatically in the repo root on first boot.
