@@ -22,6 +22,7 @@ class ContactCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     company: Optional[str] = None
+    account_id: Optional[int] = None
 
 
 class ContactUpdate(BaseModel):
@@ -29,6 +30,7 @@ class ContactUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     company: Optional[str] = None
+    account_id: Optional[int] = None
 
 
 class ContactOut(BaseModel):
@@ -50,6 +52,7 @@ def _to_out(c: Contact) -> dict:
         "email": c.email,
         "phone": c.phone,
         "company": c.company,
+        "account_id": c.account_id,
         "lead_score": c.lead_score,
         "created_at": c.created_at,
     }
@@ -75,6 +78,7 @@ def create_contact(
         email=body.email,
         phone=body.phone,
         company=body.company,
+        account_id=body.account_id,
         lead_score=0.0,
         owner_id=current_user.id,
         created_at=now,

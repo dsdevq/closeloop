@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CloseLoop CRM v1.0</title>
+  <title>CloseLoop CRM v2.0</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -126,6 +126,11 @@
       letter-spacing: .06em;
       color: #555;
     }
+    .column-prob {
+      font-size: .68rem;
+      color: #888;
+      margin-left: .4rem;
+    }
     .column-count {
       background: #c5cad4;
       border-radius: 10px;
@@ -154,14 +159,6 @@
     .card-meta { font-size: .75rem; color: #666; display: flex; justify-content: space-between; }
     .card-contact { font-size: .75rem; color: #888; margin-bottom: .2rem; }
 
-    /* ── Stage colours ── */
-    .stage-lead .column-title { color: #6366f1; }
-    .stage-qualified .column-title { color: #0ea5e9; }
-    .stage-proposal .column-title { color: #f59e0b; }
-    .stage-negotiation .column-title { color: #f97316; }
-    .stage-won .column-title { color: #22c55e; }
-    .stage-lost .column-title { color: #ef4444; }
-
     /* ── Buttons ── */
     .btn {
       background: #6366f1;
@@ -175,6 +172,18 @@
       transition: background .15s;
     }
     .btn:hover { background: #4f46e5; }
+    .btn-danger {
+      background: #ef4444;
+      border: none;
+      border-radius: 7px;
+      color: #fff;
+      cursor: pointer;
+      font-size: .82rem;
+      font-weight: 600;
+      padding: .45rem .9rem;
+      transition: background .15s;
+    }
+    .btn-danger:hover { background: #dc2626; }
     .btn-sm {
       background: transparent;
       border: 1.5px dashed #aaa;
@@ -206,6 +215,30 @@
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: #fafbff; }
     .score-badge { background: #e0f2fe; border-radius: 12px; color: #0369a1; font-size: .72rem; font-weight: 700; padding: 2px 8px; }
+    .account-link { color: #6366f1; cursor: pointer; text-decoration: none; font-weight: 600; background: none; border: none; font-size: inherit; padding: 0; }
+    .account-link:hover { text-decoration: underline; }
+
+    /* ── Accounts view ── */
+    .accounts-toolbar {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      margin-bottom: 1rem;
+    }
+    .accounts-toolbar h2 { font-size: 1rem; font-weight: 600; flex: 1; }
+    .account-detail-meta {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: .75rem;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .account-meta-item { font-size: .85rem; }
+    .account-meta-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #777; margin-bottom: .2rem; }
+    .contacts-section-heading { font-size: .9rem; font-weight: 700; margin: 1rem 0 .5rem; color: #333; }
 
     /* ── Modal ── */
     .overlay {
@@ -439,6 +472,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="pipeline" onclick="showTab('pipeline')">Pipeline</button>
     <button class="tab" data-tab="contacts" onclick="showTab('contacts')">Contacts</button>
+    <button class="tab" data-tab="accounts" onclick="showTab('accounts')">Accounts</button>
     <button class="tab" data-tab="today" onclick="showTab('today')">Today</button>
     <button class="tab" data-tab="stats" onclick="showTab('stats')">Stats</button>
   </div>
@@ -448,7 +482,7 @@
       <span class="role-pill" id="nav-role-pill"></span>
     </div>
     <button class="btn-logout" onclick="logout()">Sign out</button>
-    <span class="version-label">v1.0</span>
+    <span class="version-label">v2.0</span>
   </div>
 </nav>
 
@@ -456,7 +490,7 @@
 <div id="view-pipeline" class="view active">
   <div class="pipeline-toolbar">
     <h2>Pipeline</h2>
-    <button class="btn" onclick="openNewDealModal(null)">+ New Deal</button>
+    <button class="btn" onclick="openNewDealModal()">+ New Deal</button>
   </div>
   <!-- Saved views for deals -->
   <div class="saved-views-panel" id="deals-sv-panel">
@@ -501,11 +535,46 @@
   <table>
     <thead>
       <tr>
-        <th>Name</th><th>Email</th><th>Phone</th><th>Company</th><th>Lead Score</th>
+        <th>Name</th><th>Email</th><th>Phone</th><th>Company</th><th>Account</th><th>Lead Score</th>
       </tr>
     </thead>
     <tbody id="contacts-body"></tbody>
   </table>
+</div>
+
+<!-- Accounts view -->
+<div id="view-accounts" class="view">
+  <!-- Account list section -->
+  <div id="accounts-list-section">
+    <div class="accounts-toolbar">
+      <h2>Accounts</h2>
+      <button class="btn" onclick="openNewAccountModal()">+ New Account</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th><th>Domain</th><th>Industry</th><th>Contacts</th><th>Owner ID</th>
+        </tr>
+      </thead>
+      <tbody id="accounts-body"></tbody>
+    </table>
+  </div>
+  <!-- Account detail section -->
+  <div id="accounts-detail-section" style="display:none">
+    <div class="accounts-toolbar">
+      <button class="btn-cancel" onclick="showAccountList()">← Back</button>
+      <h2 id="account-detail-name"></h2>
+      <button class="btn-danger" onclick="deleteCurrentAccount()">Delete</button>
+    </div>
+    <div class="account-detail-meta" id="account-detail-meta"></div>
+    <div class="contacts-section-heading">Linked Contacts</div>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Email</th><th>Phone</th><th>Company</th></tr>
+      </thead>
+      <tbody id="account-contacts-body"></tbody>
+    </table>
+  </div>
 </div>
 
 <!-- Stats view -->
@@ -563,6 +632,12 @@
       <label>Company</label>
       <input id="contact-company" type="text" placeholder="Acme Inc.">
     </div>
+    <div class="field">
+      <label>Account</label>
+      <select id="contact-account">
+        <option value="">— none —</option>
+      </select>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeContactModal()">Cancel</button>
       <button class="btn" onclick="submitContact()">Create</button>
@@ -570,10 +645,45 @@
   </div>
 </div>
 
+<!-- New Account modal -->
+<div class="overlay" id="account-overlay" onclick="closeAccountModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>New Account</h3>
+    <div class="field">
+      <label>Name *</label>
+      <input id="account-name-input" type="text" placeholder="Company name">
+    </div>
+    <div class="field">
+      <label>Domain</label>
+      <input id="account-domain-input" type="text" placeholder="example.com">
+    </div>
+    <div class="field">
+      <label>Industry</label>
+      <input id="account-industry-input" type="text" placeholder="Technology, Finance…">
+    </div>
+    <div class="field">
+      <label>Website</label>
+      <input id="account-website-input" type="text" placeholder="https://example.com">
+    </div>
+    <div class="field">
+      <label>Phone</label>
+      <input id="account-phone-input" type="text" placeholder="+1 555 000 0000">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeAccountModal()">Cancel</button>
+      <button class="btn" onclick="submitAccount()">Create</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-  const STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
+  // Palette for dynamic stage column headers (cycles by position index)
+  const STAGE_PALETTE = [
+    '#6366f1', '#0ea5e9', '#f59e0b', '#f97316',
+    '#22c55e', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899',
+  ];
 
   // ── Auth helpers ───────────────────────────────────────────────────────────
   function getToken() { return localStorage.getItem('access_token'); }
@@ -624,11 +734,13 @@
   // ── State ──────────────────────────────────────────────────────────────────
   let deals = [];
   let contacts = [];
+  let accounts = [];
+  let stages = [];
   let draggedDealId = null;
   let savedViews = [];
-  // active filtered result sets (null = show default list)
   let filteredDeals = null;
   let filteredContacts = null;
+  let currentAccountId = null;
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
   async function init() {
@@ -637,9 +749,17 @@
       return;
     }
     showUserBadge();
-    await Promise.all([loadDeals(), loadContacts(), loadForecast(), loadToday(), loadSavedViews()]);
+    await Promise.all([loadStages(), loadDeals(), loadContacts(), loadAccounts(), loadForecast(), loadToday(), loadSavedViews()]);
     renderKanban();
     renderContacts();
+    renderAccounts();
+  }
+
+  async function loadStages() {
+    try {
+      const res = await apiFetch('/pipeline/stages');
+      if (res.ok) stages = await res.json();
+    } catch (_) { /* non-fatal — fallback to empty */ }
   }
 
   async function loadDeals() {
@@ -650,6 +770,13 @@
   async function loadContacts() {
     const res = await apiFetch('/contacts');
     contacts = await res.json();
+  }
+
+  async function loadAccounts() {
+    try {
+      const res = await apiFetch('/accounts');
+      if (res.ok) accounts = await res.json();
+    } catch (_) { /* non-fatal */ }
   }
 
   async function loadForecast() {
@@ -683,29 +810,37 @@
     if (name === 'stats') loadStats();
   }
 
-  // ── Kanban rendering ───────────────────────────────────────────────────────
+  // ── Kanban rendering (uses dynamic pipeline stages) ────────────────────────
   function renderKanban() {
     const kanban = document.getElementById('kanban');
     kanban.innerHTML = '';
     const source = filteredDeals !== null ? filteredDeals : deals;
-    STAGES.forEach(stage => {
-      const col = buildColumn(stage, source.filter(d => d.stage === stage));
+
+    if (stages.length === 0) {
+      kanban.innerHTML = '<div style="color:#888;padding:2rem;font-size:.9rem">No pipeline stages configured.</div>';
+      return;
+    }
+
+    stages.forEach((stage, idx) => {
+      const stageDeals = source.filter(d => d.stage_id === stage.id);
+      const col = buildColumn(stage, stageDeals, idx);
       kanban.appendChild(col);
     });
   }
 
-  function buildColumn(stage, stageDeals) {
+  function buildColumn(stage, stageDeals, colorIdx) {
+    const color = STAGE_PALETTE[colorIdx % STAGE_PALETTE.length];
     const col = document.createElement('div');
-    col.className = `column stage-${stage}`;
-    col.dataset.stage = stage;
+    col.className = 'column';
+    col.dataset.stageId = stage.id;
 
     col.innerHTML = `
       <div class="column-header">
-        <span class="column-title">${stage}</span>
+        <span class="column-title" style="color:${escHtml(color)}">${escHtml(stage.name)}</span>
         <span class="column-count">${stageDeals.length}</span>
       </div>
-      <div class="cards" id="cards-${stage}"></div>
-      <button class="btn-sm" onclick="openNewDealModal('${stage}')">+ Add deal</button>
+      <div class="cards" id="cards-${stage.id}"></div>
+      <button class="btn-sm" onclick="openNewDealModal()">+ Add deal</button>
     `;
 
     const cardsEl = col.querySelector('.cards');
@@ -713,7 +848,7 @@
 
     cardsEl.addEventListener('dragover', onDragOver);
     cardsEl.addEventListener('dragleave', onDragLeave);
-    cardsEl.addEventListener('drop', e => onDrop(e, stage));
+    cardsEl.addEventListener('drop', e => onDrop(e, stage.id));
 
     return col;
   }
@@ -760,27 +895,22 @@
     }
   }
 
-  async function onDrop(e, newStage) {
+  async function onDrop(e, targetStageId) {
     e.preventDefault();
     e.currentTarget.classList.remove('drag-over');
     if (draggedDealId == null) return;
 
     const deal = deals.find(d => d.id === draggedDealId);
-    if (!deal || deal.stage === newStage) return;
+    if (!deal || deal.stage_id === targetStageId) return;
 
-    const res = await apiFetch(`/deals/${draggedDealId}/stage`, {
+    const res = await apiFetch(`/deals/${draggedDealId}`, {
       method: 'PATCH',
-      body: JSON.stringify({ stage: newStage }),
+      body: JSON.stringify({ stage_id: targetStageId }),
     });
 
-    if (res.status === 422) {
-      const err = await res.json();
-      showToast(err.detail || 'Invalid stage transition');
-      return;
-    }
-
     if (!res.ok) {
-      showToast('Unexpected error — could not move deal');
+      const err = await res.json().catch(() => ({}));
+      showToast(err.detail || 'Could not move deal');
       return;
     }
 
@@ -796,20 +926,103 @@
     tbody.innerHTML = '';
     const source = filteredContacts !== null ? filteredContacts : contacts;
     source.forEach(c => {
+      const acct = c.account_id ? accounts.find(a => a.id === c.account_id) : null;
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${escHtml(c.name)}</td>
         <td>${escHtml(c.email || '')}</td>
         <td>${escHtml(c.phone || '')}</td>
         <td>${escHtml(c.company || '')}</td>
+        <td>${acct ? `<button class="account-link" onclick="goToAccount(${acct.id})">${escHtml(acct.name)}</button>` : ''}</td>
         <td><span class="score-badge">${Number(c.lead_score).toFixed(1)}</span></td>
       `;
       tbody.appendChild(tr);
     });
   }
 
+  function goToAccount(accountId) {
+    showTab('accounts');
+    showAccountDetail(accountId);
+  }
+
+  // ── Accounts rendering ─────────────────────────────────────────────────────
+  function renderAccounts() {
+    const tbody = document.getElementById('accounts-body');
+    tbody.innerHTML = '';
+    accounts.forEach(a => {
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      tr.innerHTML = `
+        <td><button class="account-link" onclick="showAccountDetail(${a.id})">${escHtml(a.name)}</button></td>
+        <td>${escHtml(a.domain || '')}</td>
+        <td>${escHtml(a.industry || '')}</td>
+        <td>${a.contact_count || 0}</td>
+        <td>${a.owner_id || ''}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    if (accounts.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;padding:2rem">No accounts yet — click + New Account to add one.</td></tr>';
+    }
+  }
+
+  async function showAccountDetail(accountId) {
+    currentAccountId = accountId;
+    const res = await apiFetch(`/accounts/${accountId}`);
+    if (!res.ok) { showToast('Account not found'); return; }
+    const a = await res.json();
+
+    document.getElementById('account-detail-name').textContent = a.name;
+    document.getElementById('accounts-list-section').style.display = 'none';
+    document.getElementById('accounts-detail-section').style.display = '';
+
+    const meta = document.getElementById('account-detail-meta');
+    const field = (label, val) => val ? `<div class="account-meta-item"><div class="account-meta-label">${escHtml(label)}</div>${escHtml(val)}</div>` : '';
+    meta.innerHTML = [
+      field('Domain', a.domain),
+      field('Industry', a.industry),
+      field('Website', a.website),
+      field('Phone', a.phone),
+      field('Address', a.address),
+    ].filter(Boolean).join('') || '<div style="color:#888;font-size:.85rem">No additional info.</div>';
+
+    const tbody = document.getElementById('account-contacts-body');
+    tbody.innerHTML = '';
+    const linked = a.contacts || [];
+    linked.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escHtml(c.name)}</td>
+        <td>${escHtml(c.email || '')}</td>
+        <td>${escHtml(c.phone || '')}</td>
+        <td>${escHtml(c.company || '')}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    if (linked.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888;padding:1rem">No linked contacts.</td></tr>';
+    }
+  }
+
+  function showAccountList() {
+    currentAccountId = null;
+    document.getElementById('accounts-detail-section').style.display = 'none';
+    document.getElementById('accounts-list-section').style.display = '';
+  }
+
+  async function deleteCurrentAccount() {
+    if (!currentAccountId) return;
+    if (!confirm('Delete this account?')) return;
+    const res = await apiFetch(`/accounts/${currentAccountId}`, { method: 'DELETE' });
+    if (!res.ok) { showToast('Failed to delete account'); return; }
+    accounts = accounts.filter(a => a.id !== currentAccountId);
+    showAccountList();
+    renderAccounts();
+    renderContacts();
+  }
+
   // ── New deal modal ─────────────────────────────────────────────────────────
-  function openNewDealModal(defaultStage) {
+  function openNewDealModal() {
     document.getElementById('deal-title').value = '';
     document.getElementById('deal-value').value = '';
     const sel = document.getElementById('deal-contact');
@@ -855,6 +1068,14 @@
     ['contact-name', 'contact-email', 'contact-phone', 'contact-company'].forEach(id => {
       document.getElementById(id).value = '';
     });
+    const sel = document.getElementById('contact-account');
+    sel.innerHTML = '<option value="">— none —</option>';
+    accounts.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = a.name;
+      sel.appendChild(opt);
+    });
     document.getElementById('contact-overlay').classList.add('open');
     document.getElementById('contact-name').focus();
   }
@@ -872,9 +1093,11 @@
     const email = document.getElementById('contact-email').value.trim();
     const phone = document.getElementById('contact-phone').value.trim();
     const company = document.getElementById('contact-company').value.trim();
+    const accountId = parseInt(document.getElementById('contact-account').value, 10);
     if (email) body.email = email;
     if (phone) body.phone = phone;
     if (company) body.company = company;
+    if (accountId) body.account_id = accountId;
 
     const res = await apiFetch('/contacts', {
       method: 'POST',
@@ -886,6 +1109,49 @@
     const contact = await res.json();
     contacts.push(contact);
     document.getElementById('contact-overlay').classList.remove('open');
+    renderContacts();
+  }
+
+  // ── New account modal ──────────────────────────────────────────────────────
+  function openNewAccountModal() {
+    ['account-name-input', 'account-domain-input', 'account-industry-input',
+     'account-website-input', 'account-phone-input'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('account-overlay').classList.add('open');
+    document.getElementById('account-name-input').focus();
+  }
+
+  function closeAccountModal(e) {
+    if (e && e.target !== document.getElementById('account-overlay')) return;
+    document.getElementById('account-overlay').classList.remove('open');
+  }
+
+  async function submitAccount() {
+    const name = document.getElementById('account-name-input').value.trim();
+    if (!name) { showToast('Account name is required'); return; }
+
+    const body = { name };
+    const domain = document.getElementById('account-domain-input').value.trim();
+    const industry = document.getElementById('account-industry-input').value.trim();
+    const website = document.getElementById('account-website-input').value.trim();
+    const phone = document.getElementById('account-phone-input').value.trim();
+    if (domain) body.domain = domain;
+    if (industry) body.industry = industry;
+    if (website) body.website = website;
+    if (phone) body.phone = phone;
+
+    const res = await apiFetch('/accounts', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) { showToast('Failed to create account'); return; }
+
+    const account = await res.json();
+    accounts.push(account);
+    document.getElementById('account-overlay').classList.remove('open');
+    renderAccounts();
     renderContacts();
   }
 
@@ -1040,11 +1306,10 @@
     const rowsEl = document.getElementById('stats-stage-rows');
     if (s.deals_by_stage && Object.keys(s.deals_by_stage).length > 0) {
       rowsEl.innerHTML = '';
-      STAGES.forEach(stage => {
-        if (s.deals_by_stage[stage] == null) return;
+      Object.entries(s.deals_by_stage).forEach(([stageName, count]) => {
         const row = document.createElement('div');
         row.className = 'stage-row';
-        row.innerHTML = `<span>${escHtml(stage)}</span><span>${escHtml(String(s.deals_by_stage[stage]))}</span>`;
+        row.innerHTML = `<span>${escHtml(stageName)}</span><span>${escHtml(String(count))}</span>`;
         rowsEl.appendChild(row);
       });
       breakdown.style.display = '';
@@ -1073,6 +1338,7 @@
     if (e.key === 'Escape') {
       document.getElementById('deal-overlay').classList.remove('open');
       document.getElementById('contact-overlay').classList.remove('open');
+      document.getElementById('account-overlay').classList.remove('open');
     }
   });
 

@@ -12,7 +12,8 @@ from sqlalchemy import text
 import app.models  # noqa: F401 — registers models on Base before create_all
 from app.core.security import hash_password
 from app.database import Base, SessionLocal, engine
-from app.models import Activity, Contact, Deal, User
+from app.models import Activity, Contact, Deal, PipelineStage, User
+from app.routers.accounts import router as accounts_router
 from app.routers.activities import router as activities_router
 from app.routers.auth import router as auth_router
 from app.routers.contacts import router as contacts_router
@@ -20,6 +21,7 @@ from app.routers.deals import router as deals_router
 from app.routers.forecast import router as forecast_router
 from app.routers.health import router as health_router
 from app.routers.outbox import router as outbox_router
+from app.routers.pipeline import router as pipeline_router
 from app.routers.reminders import router as reminders_router
 from app.routers.saved_views import router as saved_views_router
 from app.routers.stats import router as stats_router
@@ -28,10 +30,23 @@ from app.routers.tags import router as tags_router
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Map legacy string stage names → default PipelineStage names
+_STAGE_NAME_MAP: dict[str, str] = {
+    "lead": "Prospecting",
+    "qualified": "Qualification",
+    "proposal": "Proposal",
+    "negotiation": "Negotiation",
+    "won": "Closed-Won",
+    "lost": "Closed-Lost",
+    "open": "Prospecting",
+    "active": "Prospecting",
+}
+
 
 def _run_migrations():
-    """Add owner_id columns to existing tables if they don't already exist."""
+    """Add new columns to existing tables idempotently."""
     with engine.connect() as conn:
+        # v1 — owner_id on contacts / deals / activities
         for table in ("contacts", "deals", "activities"):
             try:
                 conn.execute(
@@ -39,7 +54,18 @@ def _run_migrations():
                 )
                 conn.commit()
             except Exception:
-                # Column already present — OperationalError("duplicate column name")
+                conn.rollback()
+
+        # v2 — account_id on contacts, stage_id on deals
+        v2_cols = [
+            ("contacts", "account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL"),
+            ("deals", "stage_id INTEGER REFERENCES pipeline_stages(id) ON DELETE SET NULL"),
+        ]
+        for table, col_def in v2_cols:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_def}"))
+                conn.commit()
+            except Exception:
                 conn.rollback()
 
 
@@ -80,15 +106,55 @@ def _backfill_owner(db, admin_id: int):
     db.commit()
 
 
+def _seed_pipeline_stages():
+    """Seed the 6 default pipeline stages if none exist, then backfill deal.stage_id."""
+    db = SessionLocal()
+    try:
+        if db.query(PipelineStage).first():
+            # Already seeded — just make sure stage_id backfill is done
+            _backfill_stage_id(db)
+            return
+
+        now = datetime.now(timezone.utc).isoformat()
+        defaults = [
+            PipelineStage(name="Prospecting",  position=0, probability=0,   is_default=1, created_at=now),
+            PipelineStage(name="Qualification", position=1, probability=20,  is_default=1, created_at=now),
+            PipelineStage(name="Proposal",      position=2, probability=50,  is_default=1, created_at=now),
+            PipelineStage(name="Negotiation",   position=3, probability=75,  is_default=1, created_at=now),
+            PipelineStage(name="Closed-Won",    position=4, probability=100, is_default=1, created_at=now),
+            PipelineStage(name="Closed-Lost",   position=5, probability=0,   is_default=1, created_at=now),
+        ]
+        db.add_all(defaults)
+        db.commit()
+        _backfill_stage_id(db)
+    finally:
+        db.close()
+
+
+def _backfill_stage_id(db):
+    """Set deal.stage_id for any deals that still have NULL stage_id."""
+    stages = {s.name: s.id for s in db.query(PipelineStage).all()}
+    if not stages:
+        return
+    deals = db.query(Deal).filter(Deal.stage_id.is_(None)).all()
+    for deal in deals:
+        target_name = _STAGE_NAME_MAP.get(deal.stage, "Prospecting")
+        stage_id = stages.get(target_name)
+        if stage_id:
+            deal.stage_id = stage_id
+    db.commit()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _run_migrations()
     _seed_and_backfill()
+    _seed_pipeline_stages()
     yield
 
 
-app = FastAPI(title="CloseLoop", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="CloseLoop", version="2.0.0", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -116,6 +182,8 @@ app.include_router(health_router, prefix="")
 app.include_router(auth_router)
 app.include_router(contacts_router)
 app.include_router(deals_router)
+app.include_router(accounts_router)
+app.include_router(pipeline_router)
 app.include_router(activities_router)
 app.include_router(reminders_router)
 app.include_router(forecast_router)

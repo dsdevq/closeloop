@@ -12,7 +12,7 @@ from app.core.stages import stage_probability, validate_transition
 from app.core.velocity import is_deal_rotting, stage_sla_days, time_in_stage_hours
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import Contact, Deal, StageTransition, User
+from app.models import Contact, Deal, PipelineStage, StageTransition, User
 
 router = APIRouter(prefix="/deals")
 
@@ -27,6 +27,8 @@ class DealUpdate(BaseModel):
     title: Optional[str] = None
     value: Optional[float] = None
     contact_id: Optional[int] = None
+    stage_id: Optional[int] = None
+    probability: Optional[float] = None
 
 
 class DealStageUpdate(BaseModel):
@@ -37,12 +39,15 @@ def _to_out(deal: Deal, contact_name: Optional[str] = None) -> dict:
     name = contact_name if contact_name is not None else (
         deal.contact.name if deal.contact else None
     )
+    stage_name = deal.pipeline_stage.name if deal.pipeline_stage else None
     return {
         "id": deal.id,
         "title": deal.title,
         "contact_id": deal.contact_id,
         "contact_name": name,
         "stage": deal.stage,
+        "stage_id": deal.stage_id,
+        "stage_name": stage_name,
         "value": deal.value,
         "probability": deal.probability,
         "created_at": deal.created_at,
@@ -321,6 +326,16 @@ def update_deal(
         contact = db.query(Contact).filter(Contact.id == updates["contact_id"]).first()
         if not contact:
             raise HTTPException(status_code=404, detail="Contact not found")
+
+    if "stage_id" in updates:
+        ps = db.query(PipelineStage).filter(PipelineStage.id == updates["stage_id"]).first()
+        if not ps:
+            raise HTTPException(status_code=404, detail="Pipeline stage not found")
+        deal.stage_id = ps.id
+        deal.stage = ps.name
+        if "probability" not in updates:
+            deal.probability = ps.probability / 100.0
+        updates.pop("stage_id")
 
     for field, value in updates.items():
         setattr(deal, field, value)
