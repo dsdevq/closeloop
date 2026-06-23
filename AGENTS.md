@@ -5,8 +5,9 @@
 ## Stack
 
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.x (ORM), SQLite (`closeloop.db`)
-- **Auth:** `pyjwt>=2.8.0` (HS256 JWT) + `passlib[bcrypt]>=1.7.4` (password hashing)
-- **Frontend:** Vanilla HTML/CSS/JS — `app/static/index.html` (main app) + `app/static/login.html` (auth) — no build step, no bundler, no CDN
+- **Auth:** `pyjwt>=2.8.0` (HS256 JWT) + `bcrypt>=4.0.0` (password hashing)
+- **Frontend (current):** Vanilla HTML/CSS/JS — `app/static/index.html` (main app) + `app/static/login.html` (auth) — no build step, no bundler, no CDN
+- **Frontend (target):** React + Vite + TypeScript + Tailwind. Treat the current vanilla UI as MVP scaffolding; do not deepen it for rich UI work.
 - **Tests:** pytest, `httpx`-backed Starlette `TestClient`
 - **Zero external services** — no email, no network calls at runtime
 
@@ -16,8 +17,11 @@
 # Install deps
 pip install -r requirements.txt
 
-# Start server
+# Start server (local)
 uvicorn app.main:app --reload
+
+# Start server (preview/container — bind all interfaces)
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 # Run tests (must be green before every PR)
 python -m pytest -q

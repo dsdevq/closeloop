@@ -1,2 +1,34 @@
-# closeloop
-CloseLoop — self-contained CRM (devclaw autonomous-product dogfood, 2026-06-21)
+# CloseLoop
+
+Self-contained CRM — FastAPI backend, current vanilla JS static frontend, SQLite storage.
+
+Frontend direction: the current vanilla UI is MVP scaffolding. Rich UI work should move to React + Vite + TypeScript + Tailwind rather than expanding the single-file static app.
+
+## Quick start (local)
+
+```bash
+# Install dependencies (Python 3.11+)
+pip install -r requirements.txt
+
+# Run from repo root — static UI served at /
+uvicorn app.main:app --reload
+
+# Health check
+curl http://localhost:8000/health
+```
+
+## Preview / hosted environment
+
+If running behind a reverse proxy or in a container, bind to all interfaces:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+## Tests
+
+```bash
+python -m pytest -q
+```
+
+The database file (`closeloop.db`) is created automatically in the repo root on first boot.
