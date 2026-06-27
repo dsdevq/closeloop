@@ -246,6 +246,7 @@ tests/
 
 - **`StreamingResponse.body_iterator` is an async generator** — Starlette wraps all sync iterables via `iterate_in_threadpool`, so you cannot call `list(response.body_iterator)`. To drain a `StreamingResponse` to bytes outside a web context, use `asyncio.run(_collect_async(response.body_iterator))` where `_collect_async` is an `async for` loop.
 - **CLI entry point:** `python -m app.cli export <entity> [--format csv|xlsx] [--out PATH]` and `python -m app.cli import <entity> [--format csv|xlsx] <file>`. Entities: contacts, deals, activities. argparse `choices=` handles entity/format validation with non-zero exit and a clear message. File read errors are caught as `OSError` and printed to stderr with exit code 1. On import, a one-line summary `total=N inserted=N skipped=N failed=N` is printed to stdout; each `RowError` is printed to stderr; exit code is 1 when `result.failed` is non-empty.
+- **CLI tests use direct function calls + SessionLocal patch** — The CLI uses argparse (not Click/Typer), so there is no CliRunner. Tests call `_cmd_export(args)` / `_cmd_import(args)` directly with a `argparse.Namespace`, and patch `app.cli.SessionLocal` with a `sessionmaker` bound to an in-memory engine (StaticPool). See `tests/test_cli.py`. FK dependency seeding order: User → Account → Contact → PipelineStage → Deal → Activity.
 
 ## M5 gotchas
 
