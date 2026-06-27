@@ -3,7 +3,6 @@ import io
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -12,6 +11,9 @@ from app.core.clock import Clock, get_clock
 from app.core.lead_score import compute_lead_score
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.interchange.config import REGISTRY
+from app.interchange.export_csv import export_csv
+from app.interchange.export_xlsx import export_xlsx
 from app.models import Activity, Contact, Deal, User
 
 router = APIRouter(prefix="/contacts")
@@ -100,30 +102,26 @@ def list_contacts(
     return [_to_out(c) for c in contacts]
 
 
-_CSV_EXPORT_FIELDS = ["id", "name", "email", "phone", "company", "lead_score", "created_at"]
 _CSV_IMPORT_REQUIRED = {"name"}
 _VALID_SOURCES = {"referral", "inbound", "outbound", "event", "other"}
 
 
 @router.get("/export")
 def export_contacts(
+    format: str = "csv",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Export contacts as a CSV file (respects ownership for reps)."""
+    """Export contacts as CSV or XLSX (respects ownership for reps)."""
+    if format not in ("csv", "xlsx"):
+        raise HTTPException(status_code=422, detail="format must be 'csv' or 'xlsx'")
     query = _apply_owner_filter(db.query(Contact), current_user)
     contacts = query.all()
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=_CSV_EXPORT_FIELDS)
-    writer.writeheader()
-    for c in contacts:
-        writer.writerow({f: getattr(c, f, None) for f in _CSV_EXPORT_FIELDS})
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=contacts.csv"},
-    )
+    columns = REGISTRY["contacts"].columns
+    rows = [{col: getattr(c, col, None) for col in columns} for c in contacts]
+    if format == "xlsx":
+        return export_xlsx("contacts", rows)
+    return export_csv("contacts", rows)
 
 
 @router.post("/import")
