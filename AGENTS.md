@@ -66,6 +66,9 @@ app/
                      (frozen dataclass with .columns, .date_fields, .match_keys)
     validate.py    — validate_row(entity, index, raw) → (record|None, RowError|None);
                      checks required fields, coerces date fields to date objects
+    dedup.py       — is_duplicate(entity, record, session) → bool; contacts=email, deals=title+owner_id, activities=never
+    import_service.py — import_entity(entity, file_bytes, fmt, session) → ImportResult;
+                     parse → validate → dedup → insert (partial-commit: valid rows inserted, dupes skipped, invalid collected)
   static/
     index.html   — generated React SPA entry served at `/`
     login.html   — generated React SPA entry copy served at `/login.html`
