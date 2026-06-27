@@ -1,7 +1,7 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,8 @@ from app.dependencies import get_current_user
 from app.interchange.config import REGISTRY
 from app.interchange.export_csv import export_csv
 from app.interchange.export_xlsx import export_xlsx
+from app.interchange.import_service import import_entity
+from app.interchange.schemas import ImportResult
 from app.models import Activity, User
 
 router = APIRouter(prefix="/activities")
@@ -137,6 +139,25 @@ def export_activities(
     if format == "xlsx":
         return export_xlsx("activities", rows)
     return export_csv("activities", rows)
+
+
+@router.post("/import")
+async def import_activities(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ImportResult:
+    filename = file.filename or ""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext == "csv":
+        fmt = "csv"
+    elif ext == "xlsx":
+        fmt = "xlsx"
+    else:
+        raise HTTPException(status_code=400, detail="unsupported file type: expected .csv or .xlsx")
+
+    file_bytes = await file.read()
+    return import_entity(entity="activities", file_bytes=file_bytes, fmt=fmt, session=db)
 
 
 @router.get("/{activity_id}")
