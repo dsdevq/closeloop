@@ -60,6 +60,7 @@ app/
     tags.py        — /tags CRUD + /tags/contacts/{id} + /tags/deals/{id}      [M5]
     accounts.py    — /accounts CRUD; rep sees own, manager/admin see all       [v2]
     pipeline.py    — /pipeline/stages CRUD; write is admin/manager only        [v2]
+  cli.py           — management CLI; `export <entity> [--format csv|xlsx] [--out PATH]`
   interchange/     — bulk import/export infrastructure
     schemas.py     — RowError (row_index, field, value, rule), ImportResult Pydantic models
     config.py      — REGISTRY: dict mapping 'contacts'|'deals'|'activities' → EntityConfig
@@ -237,6 +238,11 @@ tests/
 | D20 | Stage DELETE returns 409 (not 422) when deals exist — 409 Conflict is the correct HTTP semantics for "resource state conflict". |
 | D21 | Manager role can create/update/delete pipeline stages (same as admin) — stage configuration is an operations concern, not just superadmin. |
 | D22 | In tests, pipeline stages are NOT auto-seeded (no lifespan). Tests that need them must create them via `POST /pipeline/stages` or insert `PipelineStage` rows directly. |
+
+## CLI gotchas
+
+- **`StreamingResponse.body_iterator` is an async generator** — Starlette wraps all sync iterables via `iterate_in_threadpool`, so you cannot call `list(response.body_iterator)`. To drain a `StreamingResponse` to bytes outside a web context, use `asyncio.run(_collect_async(response.body_iterator))` where `_collect_async` is an `async for` loop.
+- **CLI entry point:** `python -m app.cli export <entity> [--format csv|xlsx] [--out PATH]`. Entities: contacts, deals, activities. argparse `choices=` handles validation with non-zero exit and a clear message.
 
 ## M5 gotchas
 
