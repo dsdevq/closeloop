@@ -1,8 +1,6 @@
-import csv
-import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -14,6 +12,8 @@ from app.dependencies import get_current_user
 from app.interchange.config import REGISTRY
 from app.interchange.export_csv import export_csv
 from app.interchange.export_xlsx import export_xlsx
+from app.interchange.import_service import import_entity
+from app.interchange.schemas import ImportResult
 from app.models import Contact, Deal, PipelineStage, StageTransition, User
 
 router = APIRouter(prefix="/deals")
@@ -115,9 +115,6 @@ def list_deals(
     return [_to_out(d) for d in deals]
 
 
-_DEAL_VALID_STAGES = {"lead", "qualified", "proposal", "negotiation", "won", "lost"}
-
-
 @router.get("/export")
 def export_deals(
     format: str = "csv",
@@ -137,84 +134,22 @@ def export_deals(
 
 
 @router.post("/import")
-def import_deals(
-    body: dict,
+async def import_deals(
+    file: UploadFile,
     db: Session = Depends(get_db),
-    clk: Clock = Depends(get_clock),
     current_user: User = Depends(get_current_user),
-):
-    """
-    Import deals from CSV text.
+) -> ImportResult:
+    filename = file.filename or ""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext == "csv":
+        fmt = "csv"
+    elif ext == "xlsx":
+        fmt = "xlsx"
+    else:
+        raise HTTPException(status_code=400, detail="unsupported file type: expected .csv or .xlsx")
 
-    Accepts: {"csv": "<csv text>"}.
-    Returns: {"imported": N, "errors": [{"row": R, "reason": "..."}, ...]}.
-    Required columns: contact_id, title. Optional: value, stage, currency.
-    """
-    csv_text = body.get("csv", "")
-    if not csv_text:
-        raise HTTPException(status_code=422, detail="csv field is required and must not be empty")
-
-    reader = csv.DictReader(io.StringIO(csv_text))
-    imported = 0
-    errors: list[dict] = []
-    now = clk.now().isoformat()
-
-    for row_num, row in enumerate(reader, start=2):
-        title = (row.get("title") or "").strip()
-        if not title:
-            errors.append({"row": row_num, "reason": "title is required"})
-            continue
-
-        try:
-            contact_id = int(row.get("contact_id") or "")
-        except (ValueError, TypeError):
-            errors.append({"row": row_num, "reason": "contact_id must be an integer"})
-            continue
-
-        contact = db.query(Contact).filter(Contact.id == contact_id).first()
-        if not contact:
-            errors.append({"row": row_num, "reason": f"contact_id not found: {contact_id}"})
-            continue
-
-        try:
-            value = float(row.get("value") or 0)
-        except (ValueError, TypeError):
-            errors.append({"row": row_num, "reason": "value must be a number"})
-            continue
-
-        stage = (row.get("stage") or "lead").strip()
-        if stage not in _DEAL_VALID_STAGES:
-            errors.append({"row": row_num, "reason": f"invalid stage: {stage!r}"})
-            continue
-
-        currency = (row.get("currency") or "USD").strip()
-        prob = stage_probability(stage)
-
-        deal = Deal(
-            contact_id=contact_id,
-            title=title,
-            value=value,
-            stage=stage,
-            probability=prob,
-            currency=currency,
-            owner_id=current_user.id,
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(deal)
-        db.flush()
-
-        transition = StageTransition(
-            deal_id=deal.id,
-            from_stage=None,
-            to_stage=stage,
-            occurred_at=now,
-        )
-        db.add(transition)
-        imported += 1
-
-    db.commit()
-    return {"imported": imported, "errors": errors}
+    file_bytes = await file.read()
+    return import_entity(entity="deals", file_bytes=file_bytes, fmt=fmt, session=db)
 
 
 @router.get("/rotting")

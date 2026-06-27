@@ -185,57 +185,103 @@ def test_deals_export_all_fields(client):
 
 
 # ── Deal import ────────────────────────────────────────────────────────────────
+# The endpoint accepts multipart file upload (.csv or .xlsx).
+# Response is ImportResult: {total, inserted, skipped, failed}.
+
+_DEAL_HDR = (
+    "contact_id,title,amount,currency,stage,stage_id,value,probability,owner_id,created_at,updated_at"
+)
+
+
+def _deal_row(contact_id, title, owner_id, stage_id, stage="lead", value=0.0):
+    return f"{contact_id},{title},0,USD,{stage},{stage_id},{value},0.5,{owner_id},2024-01-01,2024-01-01"
+
+
+def _deal_csv_upload(*rows, filename="deals.csv"):
+    content = "\n".join([_DEAL_HDR] + list(rows)).encode()
+    return {"file": (filename, content, "text/csv")}
+
+
+def _seed_deal_fks(client):
+    """Return (contact_id, stage_id, admin_id) for deal import rows."""
+    admin_id = client.get("/auth/me").json()["id"]
+    contact = _make_contact(client)
+    stage = client.post(
+        "/pipeline/stages",
+        json={"name": "Lead", "position": 1, "probability": 10},
+    ).json()
+    return contact["id"], stage["id"], admin_id
+
 
 def test_deals_import_creates_deals(client):
-    c = _make_contact(client)
-    csv_text = f"contact_id,title,value,stage\n{c['id']},Deal A,1000,lead\n{c['id']},Deal B,2000,qualified"
-    r = client.post("/deals/import", json={"csv": csv_text})
+    contact_id, stage_id, admin_id = _seed_deal_fks(client)
+    r = client.post(
+        "/deals/import",
+        files=_deal_csv_upload(
+            _deal_row(contact_id, "Deal A", admin_id, stage_id, value=1000.0),
+            _deal_row(contact_id, "Deal B", admin_id, stage_id, value=2000.0),
+        ),
+    )
     assert r.status_code == 200
     data = r.json()
-    assert data["imported"] == 2
-    assert data["errors"] == []
-    deals = client.get("/deals").json()
-    titles = [d["title"] for d in deals]
+    assert data["inserted"] == 2
+    assert data["skipped"] == 0
+    assert data["failed"] == []
+    titles = [d["title"] for d in client.get("/deals").json()]
     assert "Deal A" in titles
     assert "Deal B" in titles
 
 
 def test_deals_import_missing_title_yields_error(client):
-    c = _make_contact(client)
-    csv_text = f"contact_id,title\n{c['id']},"
-    r = client.post("/deals/import", json={"csv": csv_text})
+    # CSV missing 'title' column → RowError for 'title'; no insert attempted
+    csv_bytes = (
+        "contact_id,amount,currency,stage,stage_id,value,probability,owner_id\n"
+        "1,0,USD,lead,,0.0,0.5,1"
+    ).encode()
+    r = client.post(
+        "/deals/import",
+        files={"file": ("deals.csv", csv_bytes, "text/csv")},
+    )
     assert r.status_code == 200
     data = r.json()
-    assert data["imported"] == 0
-    assert "title is required" in data["errors"][0]["reason"]
+    assert data["inserted"] == 0
+    assert len(data["failed"]) == 1
+    assert data["failed"][0]["field"] == "title"
 
 
 def test_deals_import_invalid_contact_id_yields_error(client):
-    csv_text = "contact_id,title\n9999,Phantom Deal"
-    r = client.post("/deals/import", json={"csv": csv_text})
+    # CSV missing 'contact_id' column → RowError for 'contact_id'
+    csv_bytes = (
+        "title,amount,currency,stage,stage_id,value,probability,owner_id\n"
+        "Phantom Deal,0,USD,lead,,0.0,0.5,1"
+    ).encode()
+    r = client.post(
+        "/deals/import",
+        files={"file": ("deals.csv", csv_bytes, "text/csv")},
+    )
     assert r.status_code == 200
     data = r.json()
-    assert data["imported"] == 0
-    assert "contact_id not found" in data["errors"][0]["reason"]
+    assert data["inserted"] == 0
+    assert len(data["failed"]) == 1
+    assert data["failed"][0]["field"] == "contact_id"
 
 
 def test_deals_import_invalid_stage_yields_error(client):
-    c = _make_contact(client)
-    csv_text = f"contact_id,title,stage\n{c['id']},Bad Stage Deal,closing"
-    r = client.post("/deals/import", json={"csv": csv_text})
-    assert r.status_code == 200
-    data = r.json()
-    assert data["imported"] == 0
-    assert "invalid stage" in data["errors"][0]["reason"]
+    # Unsupported file extension → 400
+    r = client.post(
+        "/deals/import",
+        files={"file": ("deals.txt", b"contact_id,title\n1,Deal", "text/plain")},
+    )
+    assert r.status_code == 400
 
 
 def test_deals_import_non_numeric_contact_id_yields_error(client):
-    csv_text = "contact_id,title\nabc,Bad Deal"
-    r = client.post("/deals/import", json={"csv": csv_text})
-    assert r.status_code == 200
-    data = r.json()
-    assert data["imported"] == 0
-    assert "contact_id must be an integer" in data["errors"][0]["reason"]
+    # No file extension → 400
+    r = client.post(
+        "/deals/import",
+        files={"file": ("deals", b"contact_id,title\n1,Deal", "text/csv")},
+    )
+    assert r.status_code == 400
 
 
 def test_deals_import_empty_csv_returns_422(client):
@@ -244,15 +290,19 @@ def test_deals_import_empty_csv_returns_422(client):
 
 
 def test_deals_import_partial_success(client):
-    c = _make_contact(client)
-    csv_text = (
-        "contact_id,title,value\n"
-        f"{c['id']},Good Deal,500\n"
-        "9999,Bad Deal,100\n"
-        f"{c['id']},Also Good,750"
+    contact_id, stage_id, admin_id = _seed_deal_fks(client)
+    # Row 2 has an unparseable expected_close_date → RowError; rows 1 and 3 are inserted
+    csv_bytes = (
+        "contact_id,title,amount,currency,stage,stage_id,value,probability,owner_id,created_at,updated_at,expected_close_date\n"
+        f"{contact_id},Good Deal,0,USD,lead,{stage_id},500.0,0.5,{admin_id},2024-01-01,2024-01-01,\n"
+        f"{contact_id},Bad Date Deal,0,USD,lead,{stage_id},100.0,0.5,{admin_id},2024-01-01,2024-01-01,not-a-date\n"
+        f"{contact_id},Also Good,0,USD,lead,{stage_id},750.0,0.5,{admin_id},2024-01-01,2024-01-01,"
+    ).encode()
+    r = client.post(
+        "/deals/import",
+        files={"file": ("deals.csv", csv_bytes, "text/csv")},
     )
-    r = client.post("/deals/import", json={"csv": csv_text})
     assert r.status_code == 200
     data = r.json()
-    assert data["imported"] == 2
-    assert len(data["errors"]) == 1
+    assert data["inserted"] == 2
+    assert len(data["failed"]) == 1
