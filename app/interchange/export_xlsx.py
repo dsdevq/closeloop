@@ -12,11 +12,17 @@ from app.interchange.config import REGISTRY
 
 
 def _parse_date(value: object) -> date | datetime | object:
-    """Try to parse an ISO-8601 string into a date/datetime; return the value unchanged on failure."""
+    """Try to parse an ISO-8601 string into a date/datetime; return the value unchanged on failure.
+
+    Timezone info is stripped because openpyxl (and Excel itself) do not support
+    timezone-aware datetimes — all timestamps stored in the DB use UTC, so dropping
+    tzinfo preserves the wall-clock value while satisfying openpyxl's constraint.
+    """
     if not isinstance(value, str):
         return value
     try:
-        return datetime.fromisoformat(value)
+        dt = datetime.fromisoformat(value)
+        return dt.replace(tzinfo=None)
     except ValueError:
         pass
     try:
