@@ -3,7 +3,6 @@ import io
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -12,6 +11,9 @@ from app.core.stages import stage_probability, validate_transition
 from app.core.velocity import is_deal_rotting, stage_sla_days, time_in_stage_hours
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.interchange.config import REGISTRY
+from app.interchange.export_csv import export_csv
+from app.interchange.export_xlsx import export_xlsx
 from app.models import Contact, Deal, PipelineStage, StageTransition, User
 
 router = APIRouter(prefix="/deals")
@@ -113,29 +115,25 @@ def list_deals(
     return [_to_out(d) for d in deals]
 
 
-_DEAL_CSV_EXPORT_FIELDS = ["id", "contact_id", "title", "value", "stage", "currency", "expected_close_date", "created_at"]
 _DEAL_VALID_STAGES = {"lead", "qualified", "proposal", "negotiation", "won", "lost"}
 
 
 @router.get("/export")
 def export_deals(
+    format: str = "csv",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Export deals as a CSV file (respects ownership for reps)."""
+    """Export deals as CSV or XLSX (respects ownership for reps)."""
+    if format not in ("csv", "xlsx"):
+        raise HTTPException(status_code=422, detail="format must be 'csv' or 'xlsx'")
     query = _apply_owner_filter(db.query(Deal), current_user)
     deals = query.all()
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=_DEAL_CSV_EXPORT_FIELDS)
-    writer.writeheader()
-    for d in deals:
-        writer.writerow({f: getattr(d, f, None) for f in _DEAL_CSV_EXPORT_FIELDS})
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=deals.csv"},
-    )
+    cols = REGISTRY["deals"].columns
+    rows = [{col: getattr(d, col, None) for col in cols} for d in deals]
+    if format == "xlsx":
+        return export_xlsx("deals", rows)
+    return export_csv("deals", rows)
 
 
 @router.post("/import")
