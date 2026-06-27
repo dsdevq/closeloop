@@ -195,3 +195,173 @@ def test_import_xlsx_inserts(client):
 
     activities = client.get("/activities").json()
     assert any(a["title"] == "XLSX Call" for a in activities)
+
+
+def test_dedup_contacts_email(client):
+    ISO_DATE = "2024-01-15"
+
+    acc = client.post("/accounts", json={"name": "Dedup Acme"})
+    assert acc.status_code == 201
+    acc_id = acc.json()["id"]
+
+    contact_bytes = _csv_bytes(
+        ["name", "email", "company", "title", "phone", "source",
+         "lead_score", "account_id", "owner_id", "created_at", "updated_at"],
+        ["Dedup Alice", "dedup_alice@test.example", "Acme", "Engineer",
+         "555-9001", "inbound", "0.0", str(acc_id), "1", ISO_DATE, ISO_DATE],
+    )
+
+    r1 = client.post(
+        "/contacts/import",
+        files={"file": ("contacts.csv", contact_bytes, "text/csv")},
+    )
+    assert r1.status_code == 200
+    assert r1.json()["inserted"] == 1
+
+    # Same CSV again — email already exists, row must be skipped.
+    r2 = client.post(
+        "/contacts/import",
+        files={"file": ("contacts.csv", contact_bytes, "text/csv")},
+    )
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert body2["inserted"] == 0
+    assert body2["skipped"] == 1
+    assert body2["failed"] == []
+
+    contacts = client.get("/contacts").json()
+    matching = [c for c in contacts if c["email"] == "dedup_alice@test.example"]
+    assert len(matching) == 1
+
+
+def test_dedup_deals_name_owner(client):
+    ISO_DATE = "2024-01-15"
+
+    acc = client.post("/accounts", json={"name": "Deal Dedup Corp"})
+    assert acc.status_code == 201
+    acc_id = acc.json()["id"]
+
+    # Create a contact to satisfy the deal's contact_id FK.
+    contact_bytes = _csv_bytes(
+        ["name", "email", "company", "title", "phone", "source",
+         "lead_score", "account_id", "owner_id", "created_at", "updated_at"],
+        ["Deal Contact", "dealdedup@test.example", "CorpX", "Rep",
+         "555-9002", "outbound", "0.0", str(acc_id), "1", ISO_DATE, ISO_DATE],
+    )
+    cr = client.post(
+        "/contacts/import",
+        files={"file": ("c.csv", contact_bytes, "text/csv")},
+    )
+    assert cr.status_code == 200
+    contacts = client.get("/contacts").json()
+    contact_id = next(c["id"] for c in contacts if c["email"] == "dealdedup@test.example")
+
+    stage_r = client.post(
+        "/pipeline/stages",
+        json={"name": "Dedup Stage", "position": 50, "probability": 25},
+    )
+    assert stage_r.status_code == 201
+    stage_id = stage_r.json()["id"]
+
+    deal_bytes = _csv_bytes(
+        ["contact_id", "title", "amount", "currency", "stage", "stage_id",
+         "value", "probability", "owner_id", "created_at", "updated_at"],
+        [str(contact_id), "Dedup Deal", "0", "USD", "lead", str(stage_id),
+         "1000.0", "0.5", "1", ISO_DATE, ISO_DATE],
+    )
+
+    r1 = client.post(
+        "/deals/import",
+        files={"file": ("deals.csv", deal_bytes, "text/csv")},
+    )
+    assert r1.status_code == 200
+    assert r1.json()["inserted"] == 1
+
+    # Same CSV again — title + owner_id already exists, row must be skipped.
+    r2 = client.post(
+        "/deals/import",
+        files={"file": ("deals.csv", deal_bytes, "text/csv")},
+    )
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert body2["inserted"] == 0
+    assert body2["skipped"] == 1
+    assert body2["failed"] == []
+
+    deals = client.get("/deals").json()
+    matching = [d for d in deals if d["title"] == "Dedup Deal"]
+    assert len(matching) == 1
+
+
+def test_activities_no_dedup(client):
+    ISO_DATE = "2024-01-15"
+
+    # Activities require real deal_id and contact_id because FK checks are ON
+    # and empty CSV strings become "" rather than NULL (AGENTS.md gotcha).
+    acc = client.post("/accounts", json={"name": "Activity Acme"})
+    assert acc.status_code == 201
+    acc_id = acc.json()["id"]
+
+    contact_bytes = _csv_bytes(
+        ["name", "email", "company", "title", "phone", "source",
+         "lead_score", "account_id", "owner_id", "created_at", "updated_at"],
+        ["Activity Contact", "actdedup@test.example", "CorpY", "Rep",
+         "555-9003", "inbound", "0.0", str(acc_id), "1", ISO_DATE, ISO_DATE],
+    )
+    cr = client.post(
+        "/contacts/import",
+        files={"file": ("c.csv", contact_bytes, "text/csv")},
+    )
+    assert cr.status_code == 200
+    contacts = client.get("/contacts").json()
+    contact_id = next(c["id"] for c in contacts if c["email"] == "actdedup@test.example")
+
+    stage_r = client.post(
+        "/pipeline/stages",
+        json={"name": "Act Stage", "position": 51, "probability": 30},
+    )
+    assert stage_r.status_code == 201
+    stage_id = stage_r.json()["id"]
+
+    deal_bytes = _csv_bytes(
+        ["contact_id", "title", "amount", "currency", "stage", "stage_id",
+         "value", "probability", "owner_id", "created_at", "updated_at"],
+        [str(contact_id), "Act Deal", "0", "USD", "lead", str(stage_id),
+         "500.0", "0.5", "1", ISO_DATE, ISO_DATE],
+    )
+    dr = client.post(
+        "/deals/import",
+        files={"file": ("deals.csv", deal_bytes, "text/csv")},
+    )
+    assert dr.status_code == 200
+    deals = client.get("/deals").json()
+    deal_id = next(d["id"] for d in deals if d["title"] == "Act Deal")
+
+    activity_bytes = _csv_bytes(
+        ["deal_id", "contact_id", "type", "title", "body",
+         "recurrence_rule", "owner_id", "created_at", "updated_at"],
+        [str(deal_id), str(contact_id), "call", "Dedup Activity", "",
+         "", "1", ISO_DATE, ISO_DATE],
+    )
+
+    r1 = client.post(
+        "/activities/import",
+        files={"file": ("activities.csv", activity_bytes, "text/csv")},
+    )
+    assert r1.status_code == 200
+    assert r1.json()["inserted"] == 1
+
+    # Same CSV again — activities never dedup; second row must also insert.
+    r2 = client.post(
+        "/activities/import",
+        files={"file": ("activities.csv", activity_bytes, "text/csv")},
+    )
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert body2["inserted"] == 1
+    assert body2["skipped"] == 0
+    assert body2["failed"] == []
+
+    activities = client.get("/activities").json()
+    matching = [a for a in activities if a["title"] == "Dedup Activity"]
+    assert len(matching) == 2
