@@ -60,6 +60,10 @@ app/
     tags.py        — /tags CRUD + /tags/contacts/{id} + /tags/deals/{id}      [M5]
     accounts.py    — /accounts CRUD; rep sees own, manager/admin see all       [v2]
     pipeline.py    — /pipeline/stages CRUD; write is admin/manager only        [v2]
+  interchange/     — bulk import/export infrastructure
+    schemas.py     — RowError, ImportResult Pydantic models (bulk-import result envelope)
+    config.py      — REGISTRY: dict mapping 'contacts'|'deals'|'activities' → EntityConfig
+                     (frozen dataclass with .columns, .date_fields, .match_keys)
   static/
     index.html   — generated React SPA entry served at `/`
     login.html   — generated React SPA entry copy served at `/login.html`
