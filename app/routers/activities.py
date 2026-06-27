@@ -9,6 +9,9 @@ from app.core.clock import Clock, get_clock
 from app.core.recurrence import expand_rrule
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.interchange.config import REGISTRY
+from app.interchange.export_csv import export_csv
+from app.interchange.export_xlsx import export_xlsx
 from app.models import Activity, User
 
 router = APIRouter(prefix="/activities")
@@ -116,6 +119,24 @@ def list_activities(
     if contact_id is not None:
         query = query.filter(Activity.contact_id == contact_id)
     return [_to_out(a) for a in query.all()]
+
+
+@router.get("/export")
+def export_activities(
+    format: str = "csv",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export activities as CSV or XLSX (respects ownership for reps)."""
+    if format not in ("csv", "xlsx"):
+        raise HTTPException(status_code=422, detail="format must be 'csv' or 'xlsx'")
+    query = _apply_owner_filter(db.query(Activity), current_user)
+    activities = query.all()
+    columns = REGISTRY["activities"].columns
+    rows = [{col: getattr(a, col, None) for col in columns} for a in activities]
+    if format == "xlsx":
+        return export_xlsx("activities", rows)
+    return export_csv("activities", rows)
 
 
 @router.get("/{activity_id}")
