@@ -293,6 +293,33 @@ def test_dedup_deals_name_owner(client):
     assert len(matching) == 1
 
 
+def test_per_row_errors(client):
+    # Omit the 'email' column from the CSV header.  validate_row checks
+    # `if col not in raw` for each required field, so an absent key immediately
+    # returns a RowError without ever reaching the insert stage — no account FK
+    # setup is required because validation short-circuits first.
+    csv_bytes = _csv_bytes(
+        ["name", "company", "title", "phone", "source",
+         "lead_score", "account_id", "owner_id", "updated_at"],
+        ["No Email User", "TestCo", "CEO", "555-0099",
+         "inbound", "0.0", "1", "1", "2024-01-15"],
+    )
+
+    r = client.post(
+        "/contacts/import",
+        files={"file": ("contacts.csv", csv_bytes, "text/csv")},
+    )
+    assert r.status_code == 200
+
+    body = r.json()
+    assert body["failed"], "expected at least one row error"
+
+    err = body["failed"][0]
+    assert isinstance(err["row_index"], int)
+    assert "value" in err
+    assert err["rule"]  # non-empty string naming the violated rule
+
+
 def test_activities_no_dedup(client):
     ISO_DATE = "2024-01-15"
 
