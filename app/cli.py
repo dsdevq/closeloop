@@ -11,6 +11,7 @@ from app.database import SessionLocal
 from app.interchange.config import REGISTRY
 from app.interchange.export_csv import export_csv
 from app.interchange.export_xlsx import export_xlsx
+from app.interchange.import_service import import_entity
 from app.models import Activity, Contact, Deal
 
 _VALID_ENTITIES = ("contacts", "deals", "activities")
@@ -60,6 +61,36 @@ def _cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_import(args: argparse.Namespace) -> int:
+    try:
+        with open(args.file, "rb") as fh:
+            file_bytes = fh.read()
+    except OSError as exc:
+        print(f"error: cannot read '{args.file}': {exc}", file=sys.stderr)
+        return 1
+
+    db = SessionLocal()
+    try:
+        result = import_entity(args.entity, file_bytes, args.format, db)
+    finally:
+        db.close()
+
+    print(
+        f"total={result.total} inserted={result.inserted} "
+        f"skipped={result.skipped} failed={len(result.failed)}"
+    )
+
+    if result.failed:
+        for err in result.failed:
+            print(
+                f"row {err.row_index}: field={err.field!r} value={err.value!r} rule={err.rule!r}",
+                file=sys.stderr,
+            )
+        return 1
+
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="closeloop",
@@ -87,6 +118,25 @@ def main() -> None:
         help="Output file path (default: <entity>.<format>)",
     )
 
+    import_parser = subparsers.add_parser("import", help="Import CRM data from a file")
+    import_parser.add_argument(
+        "entity",
+        choices=_VALID_ENTITIES,
+        help="Entity type to import",
+    )
+    import_parser.add_argument(
+        "--format",
+        default="csv",
+        choices=_VALID_FORMATS,
+        dest="format",
+        help="Input format (default: csv)",
+    )
+    import_parser.add_argument(
+        "file",
+        metavar="FILE",
+        help="Input file path",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -95,6 +145,9 @@ def main() -> None:
 
     if args.command == "export":
         sys.exit(_cmd_export(args))
+
+    if args.command == "import":
+        sys.exit(_cmd_import(args))
 
 
 if __name__ == "__main__":

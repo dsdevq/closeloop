@@ -60,7 +60,7 @@ app/
     tags.py        — /tags CRUD + /tags/contacts/{id} + /tags/deals/{id}      [M5]
     accounts.py    — /accounts CRUD; rep sees own, manager/admin see all       [v2]
     pipeline.py    — /pipeline/stages CRUD; write is admin/manager only        [v2]
-  cli.py           — management CLI; `export <entity> [--format csv|xlsx] [--out PATH]`
+  cli.py           — management CLI; `export <entity> [--format csv|xlsx] [--out PATH]`, `import <entity> [--format csv|xlsx] <file>`
   interchange/     — bulk import/export infrastructure
     schemas.py     — RowError (row_index, field, value, rule), ImportResult Pydantic models
     config.py      — REGISTRY: dict mapping 'contacts'|'deals'|'activities' → EntityConfig
@@ -242,7 +242,7 @@ tests/
 ## CLI gotchas
 
 - **`StreamingResponse.body_iterator` is an async generator** — Starlette wraps all sync iterables via `iterate_in_threadpool`, so you cannot call `list(response.body_iterator)`. To drain a `StreamingResponse` to bytes outside a web context, use `asyncio.run(_collect_async(response.body_iterator))` where `_collect_async` is an `async for` loop.
-- **CLI entry point:** `python -m app.cli export <entity> [--format csv|xlsx] [--out PATH]`. Entities: contacts, deals, activities. argparse `choices=` handles validation with non-zero exit and a clear message.
+- **CLI entry point:** `python -m app.cli export <entity> [--format csv|xlsx] [--out PATH]` and `python -m app.cli import <entity> [--format csv|xlsx] <file>`. Entities: contacts, deals, activities. argparse `choices=` handles entity/format validation with non-zero exit and a clear message. File read errors are caught as `OSError` and printed to stderr with exit code 1. On import, a one-line summary `total=N inserted=N skipped=N failed=N` is printed to stdout; each `RowError` is printed to stderr; exit code is 1 when `result.failed` is non-empty.
 
 ## M5 gotchas
 
