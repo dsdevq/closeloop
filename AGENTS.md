@@ -118,7 +118,10 @@ tests/
 - Run `npm --prefix frontend run typecheck`, `npm --prefix frontend run lint`, and `npm --prefix frontend run build` before frontend PRs.
 - The build script copies `app/static/index.html` to `app/static/login.html` so FastAPI serves the same React auth-aware SPA at both routes.
 - Use typed React state and normal JSX escaping. Avoid `dangerouslySetInnerHTML` for user-supplied data.
-- API calls should go through the shared `apiFetch()` helper so 401 responses consistently clear tokens and route to `/login.html`.
+- API calls should go through the shared `apiFetch()` helper in `frontend/src/api.ts` so 401 responses consistently clear tokens and route to `/login.html`.
+- `apiFetch` does NOT set `Content-Type` when the body is `FormData` — the browser must set it with the multipart boundary. Don't override this.
+- Reusable components live in `frontend/src/components/`. The `ImportExportBar` component (in `components/ImportExportBar.tsx`) handles import (multipart POST to `/{entity}/import`) and authenticated export download (GET `/{entity}/export?format=csv|xlsx`) for contacts, deals, and activities. It accepts an `entity` prop and an `onImportDone` callback.
+- ESLint rule `react-refresh/only-export-components` fires when component files export non-component values. Keep `apiFetch`/`getToken` in `api.ts` (not in App.tsx) to avoid this.
 
 ## Auth layer (v1)
 

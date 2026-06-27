@@ -12,6 +12,8 @@ import {
   UserRound,
 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { apiFetch, getToken } from './api';
+import { ImportExportBar } from './components/ImportExportBar';
 
 type Tab = 'pipeline' | 'contacts' | 'accounts' | 'today' | 'stats';
 
@@ -106,26 +108,6 @@ function storedUser(): User {
   } catch {
     return {};
   }
-}
-
-function getToken() {
-  return localStorage.getItem('access_token');
-}
-
-async function apiFetch(path: string, init: RequestInit = {}) {
-  const headers = new Headers(init.headers || {});
-  headers.set('Content-Type', headers.get('Content-Type') || 'application/json');
-  const token = getToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-
-  const response = await fetch(path, { ...init, headers });
-  if (response.status === 401) {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('current_user');
-    window.location.replace('/login.html');
-  }
-  return response;
 }
 
 function money(value: number | null | undefined) {
@@ -336,6 +318,7 @@ export function App() {
               setActiveSavedView((prev) => ({ ...prev, deals: undefined }));
             }}
             onCreateDeal={(body) => createDeal(body)}
+            onImportDone={refreshCore}
             onMoveDeal={(dealId, stageId) => moveDeal(dealId, stageId)}
             onOpenModal={() => setModal('deal')}
             savedViews={savedViews.filter((view) => view.entity_type === 'deals')}
@@ -354,6 +337,7 @@ export function App() {
               setFilteredContacts(null);
               setActiveSavedView((prev) => ({ ...prev, contacts: undefined }));
             }}
+            onImportDone={refreshCore}
             onOpenAccount={(id) => {
               setActiveTab('accounts');
               setSelectedAccountId(id);
@@ -375,7 +359,7 @@ export function App() {
             onOpenModal={() => setModal('account')}
           />
         )}
-        {activeTab === 'today' && <TodayView reminders={today} onDismiss={dismissReminder} />}
+        {activeTab === 'today' && <TodayView reminders={today} onDismiss={dismissReminder} onImportDone={refreshCore} />}
         {activeTab === 'stats' && <StatsView stats={stats} />}
       </main>
 
@@ -607,6 +591,7 @@ function PipelineView({
   loading,
   onApplySavedView,
   onClearSavedView,
+  onImportDone,
   onMoveDeal,
   onOpenModal,
   savedViews,
@@ -622,6 +607,7 @@ function PipelineView({
   onApplySavedView: (id: number, name: string) => void;
   onClearSavedView: () => void;
   onCreateDeal: (body: { title: string; contact_id: number; value: number }) => Promise<void>;
+  onImportDone: () => void;
   onMoveDeal: (dealId: number, stageId: number) => void;
   onOpenModal: () => void;
   savedViews: SavedView[];
@@ -641,6 +627,7 @@ function PipelineView({
           </button>
         }
       />
+      <ImportExportBar entity="deals" onImportDone={onImportDone} />
       <SavedViewsBar views={savedViews} activeName={activeSavedView} onApply={onApplySavedView} onClear={onClearSavedView} />
 
       <div className="flex gap-3 overflow-x-auto pb-3">
@@ -728,6 +715,7 @@ function ContactsView({
   contacts,
   onApplySavedView,
   onClearSavedView,
+  onImportDone,
   onOpenAccount,
   onOpenModal,
   savedViews,
@@ -737,6 +725,7 @@ function ContactsView({
   contacts: Contact[];
   onApplySavedView: (id: number, name: string) => void;
   onClearSavedView: () => void;
+  onImportDone: () => void;
   onOpenAccount: (id: number) => void;
   onOpenModal: () => void;
   savedViews: SavedView[];
@@ -753,6 +742,7 @@ function ContactsView({
           </button>
         }
       />
+      <ImportExportBar entity="contacts" onImportDone={onImportDone} />
       <SavedViewsBar views={savedViews} activeName={activeSavedView} onApply={onApplySavedView} onClear={onClearSavedView} />
       <div className="panel overflow-hidden">
         <table className="w-full border-collapse">
@@ -933,10 +923,19 @@ function AccountsView({
   );
 }
 
-function TodayView({ reminders, onDismiss }: { reminders: Reminder[]; onDismiss: (id: number) => void }) {
+function TodayView({
+  reminders,
+  onDismiss,
+  onImportDone,
+}: {
+  reminders: Reminder[];
+  onDismiss: (id: number) => void;
+  onImportDone: () => void;
+}) {
   return (
     <>
       <SectionHeader title="Today" />
+      <ImportExportBar entity="activities" onImportDone={onImportDone} />
       {reminders.length === 0 && <div className="panel p-10 text-center text-sm text-slate-500">No reminders due today. You are all caught up.</div>}
       <div className="space-y-2">
         {reminders.map((item) => (
