@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class RowError(BaseModel):
     row_index: int
+    field: str
     value: str
     rule: str
 

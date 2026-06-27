@@ -61,9 +61,11 @@ app/
     accounts.py    — /accounts CRUD; rep sees own, manager/admin see all       [v2]
     pipeline.py    — /pipeline/stages CRUD; write is admin/manager only        [v2]
   interchange/     — bulk import/export infrastructure
-    schemas.py     — RowError, ImportResult Pydantic models (bulk-import result envelope)
+    schemas.py     — RowError (row_index, field, value, rule), ImportResult Pydantic models
     config.py      — REGISTRY: dict mapping 'contacts'|'deals'|'activities' → EntityConfig
                      (frozen dataclass with .columns, .date_fields, .match_keys)
+    validate.py    — validate_row(entity, index, raw) → (record|None, RowError|None);
+                     checks required fields, coerces date fields to date objects
   static/
     index.html   — generated React SPA entry served at `/`
     login.html   — generated React SPA entry copy served at `/login.html`
