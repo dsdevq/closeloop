@@ -242,6 +242,8 @@ tests/
 
 - **`GET /deals/rotting` and `GET /deals/export` must be registered BEFORE `GET /deals/{deal_id}`** — FastAPI matches literal path segments before parameterized ones only when they're registered first in the same router.
 - **`GET /contacts/export` and `POST /contacts/import` must be registered BEFORE `GET /contacts/{contact_id}`** — same routing order issue.
+- **`POST /contacts/import` accepts multipart `UploadFile` (not JSON body)** — infers format from `.csv`/`.xlsx` extension (HTTP 400 otherwise); delegates to `import_entity`; returns `ImportResult` (`{total, inserted, skipped, failed}`). The old JSON-body import route was replaced.
+- **interchange FK constraint in import tests** — `validate_row` treats all non-auto, non-date config columns (incl. `account_id`, `owner_id`) as required in CSV headers. Empty CSV values for Integer FK columns become `""` not NULL → SQLite FK check fails (`PRAGMA foreign_keys = ON`). Import tests that INSERT contacts must supply valid numeric IDs; validation/dedup-only tests are unaffected.
 - **`expand_rrule` validates before the `count=0` guard** — so calling with count=0 still raises ValueError for invalid rules. This is intentional for router-level validation without needing a separate validate function.
 - **`recurrence_rule` stored as JSON Text** in Activity; `_to_out` deserializes it and returns `None` when absent. Client-side JSON encoding/decoding is fully round-tripped.
 - **Tags router uses `/tags/contacts/{id}` and `/tags/deals/{id}` prefixes** (not nested under `/contacts/{id}/tags`) to keep the router self-contained under the `/tags` prefix.

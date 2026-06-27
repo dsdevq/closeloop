@@ -48,62 +48,114 @@ def test_contacts_export_all_contacts(client):
 
 
 # ── Contact import ─────────────────────────────────────────────────────────────
+# The endpoint accepts multipart file upload (.csv or .xlsx).
+# Response is ImportResult: {total, inserted, skipped, failed}.
+
+_CONTACT_HDR = (
+    "name,email,company,title,phone,source,lead_score,"
+    "account_id,owner_id,created_at,updated_at"
+)
+
+
+def _contact_row(name, email, account_id, owner_id):
+    """One CSV data row with valid FK values and sensible defaults."""
+    return f"{name},{email},,,,,0.0,{account_id},{owner_id},2024-01-01,2024-01-01"
+
+
+def _csv_upload(*rows, filename="contacts.csv"):
+    content = "\n".join([_CONTACT_HDR] + list(rows)).encode()
+    return {"file": (filename, content, "text/csv")}
+
+
+def _seed_fks(client):
+    """Return (account_id, admin_id) valid FK values for contact rows."""
+    admin_id = client.get("/auth/me").json()["id"]
+    acct_id = client.post("/accounts", json={"name": "Corp"}).json()["id"]
+    return acct_id, admin_id
+
 
 def test_contacts_import_creates_contacts(client):
-    csv_text = "name,email,phone,company\nAlice,alice@x.com,555,Acme\nBob,bob@x.com,,Foo"
-    r = client.post("/contacts/import", json={"csv": csv_text})
+    acct_id, admin_id = _seed_fks(client)
+    r = client.post(
+        "/contacts/import",
+        files=_csv_upload(
+            _contact_row("Alice", "alice@x.com", acct_id, admin_id),
+            _contact_row("Bob", "bob@x.com", acct_id, admin_id),
+        ),
+    )
     assert r.status_code == 200
     data = r.json()
-    assert data["imported"] == 2
-    assert data["errors"] == []
-    # Verify they exist
-    contacts = client.get("/contacts").json()
-    names = [c["name"] for c in contacts]
+    assert data["inserted"] == 2
+    assert data["skipped"] == 0
+    assert data["failed"] == []
+    names = [c["name"] for c in client.get("/contacts").json()]
     assert "Alice" in names
     assert "Bob" in names
 
 
-def test_contacts_import_missing_name_yields_error(client):
-    csv_text = "name,email\n,bad@x.com"
-    r = client.post("/contacts/import", json={"csv": csv_text})
+def test_contacts_import_missing_required_column_yields_error(client):
+    # "name" column absent from header → RowError; rows are never inserted so FK values unused
+    csv_bytes = (
+        "email,company,title,phone,source,lead_score,account_id,owner_id,created_at,updated_at\n"
+        "alice@x.com,,,,,0.0,,,2024-01-01,2024-01-01"
+    ).encode()
+    r = client.post(
+        "/contacts/import",
+        files={"file": ("contacts.csv", csv_bytes, "text/csv")},
+    )
     assert r.status_code == 200
     data = r.json()
-    assert data["imported"] == 0
-    assert len(data["errors"]) == 1
-    assert "name is required" in data["errors"][0]["reason"]
+    assert data["inserted"] == 0
+    assert len(data["failed"]) == 1
+    assert data["failed"][0]["field"] == "name"
 
 
-def test_contacts_import_duplicate_email_reported_as_error(client):
+def test_contacts_import_duplicate_email_skipped(client):
+    acct_id, admin_id = _seed_fks(client)
     _make_contact(client, name="Alice", email="dup@x.com")
-    csv_text = "name,email\nAlice2,dup@x.com"
-    r = client.post("/contacts/import", json={"csv": csv_text})
+    r = client.post(
+        "/contacts/import",
+        files=_csv_upload(_contact_row("Alice2", "dup@x.com", acct_id, admin_id)),
+    )
     assert r.status_code == 200
     data = r.json()
-    assert data["imported"] == 0
-    assert any("dup@x.com" in e["reason"] for e in data["errors"])
+    assert data["inserted"] == 0
+    assert data["skipped"] == 1
+    assert data["failed"] == []
 
 
-def test_contacts_import_invalid_source_reported_as_error(client):
-    csv_text = "name,email,source\nAlice,a@x.com,twitter"
-    r = client.post("/contacts/import", json={"csv": csv_text})
-    assert r.status_code == 200
-    data = r.json()
-    assert data["imported"] == 0
-    assert len(data["errors"]) == 1
+def test_contacts_import_unsupported_extension_returns_400(client):
+    r = client.post(
+        "/contacts/import",
+        files={"file": ("contacts.txt", b"name\nAlice", "text/plain")},
+    )
+    assert r.status_code == 400
 
 
 def test_contacts_import_partial_success(client):
-    csv_text = "name,email\nGood,good@x.com\n,bad@x.com\nAlso Good,also@x.com"
-    r = client.post("/contacts/import", json={"csv": csv_text})
+    acct_id, admin_id = _seed_fks(client)
+    _make_contact(client, name="Existing", email="existing@x.com")
+    r = client.post(
+        "/contacts/import",
+        files=_csv_upload(
+            _contact_row("Good", "good@x.com", acct_id, admin_id),
+            _contact_row("Existing", "existing@x.com", acct_id, admin_id),
+            _contact_row("Also Good", "also@x.com", acct_id, admin_id),
+        ),
+    )
     assert r.status_code == 200
     data = r.json()
-    assert data["imported"] == 2
-    assert len(data["errors"]) == 1
+    assert data["inserted"] == 2
+    assert data["skipped"] == 1
+    assert data["failed"] == []
 
 
-def test_contacts_import_empty_csv_returns_422(client):
-    r = client.post("/contacts/import", json={"csv": ""})
-    assert r.status_code == 422
+def test_contacts_import_no_extension_returns_400(client):
+    r = client.post(
+        "/contacts/import",
+        files={"file": ("contacts", b"name\nAlice", "text/csv")},
+    )
+    assert r.status_code == 400
 
 
 # ── Deal export ────────────────────────────────────────────────────────────────

@@ -1,10 +1,7 @@
-import csv
-import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
@@ -14,6 +11,8 @@ from app.dependencies import get_current_user
 from app.interchange.config import REGISTRY
 from app.interchange.export_csv import export_csv
 from app.interchange.export_xlsx import export_xlsx
+from app.interchange.import_service import import_entity
+from app.interchange.schemas import ImportResult
 from app.models import Activity, Contact, Deal, User
 
 router = APIRouter(prefix="/contacts")
@@ -102,10 +101,6 @@ def list_contacts(
     return [_to_out(c) for c in contacts]
 
 
-_CSV_IMPORT_REQUIRED = {"name"}
-_VALID_SOURCES = {"referral", "inbound", "outbound", "event", "other"}
-
-
 @router.get("/export")
 def export_contacts(
     format: str = "csv",
@@ -125,62 +120,22 @@ def export_contacts(
 
 
 @router.post("/import")
-def import_contacts(
-    body: dict,
+async def import_contacts(
+    file: UploadFile,
     db: Session = Depends(get_db),
-    clk: Clock = Depends(get_clock),
     current_user: User = Depends(get_current_user),
-):
-    """
-    Import contacts from CSV text.
+) -> ImportResult:
+    filename = file.filename or ""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext == "csv":
+        fmt = "csv"
+    elif ext == "xlsx":
+        fmt = "xlsx"
+    else:
+        raise HTTPException(status_code=400, detail="unsupported file type: expected .csv or .xlsx")
 
-    Accepts: {"csv": "<csv text>"}.
-    Returns: {"imported": N, "errors": [{"row": R, "reason": "..."}, ...]}.
-    """
-    csv_text = body.get("csv", "")
-    if not csv_text:
-        raise HTTPException(status_code=422, detail="csv field is required and must not be empty")
-
-    reader = csv.DictReader(io.StringIO(csv_text))
-    imported = 0
-    errors: list[dict] = []
-    now = clk.now().isoformat()
-
-    for row_num, row in enumerate(reader, start=2):  # row 1 = header
-        name = (row.get("name") or "").strip()
-        if not name:
-            errors.append({"row": row_num, "reason": "name is required"})
-            continue
-
-        email = (row.get("email") or "").strip() or None
-        phone = (row.get("phone") or "").strip() or None
-        company = (row.get("company") or "").strip() or None
-        source = (row.get("source") or "").strip() or None
-        if source and source not in _VALID_SOURCES:
-            errors.append({"row": row_num, "reason": f"invalid source: {source!r}"})
-            continue
-
-        contact = Contact(
-            name=name,
-            email=email,
-            phone=phone,
-            company=company,
-            source=source,
-            lead_score=0.0,
-            owner_id=current_user.id,
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(contact)
-        try:
-            db.flush()
-            imported += 1
-        except IntegrityError:
-            db.rollback()
-            errors.append({"row": row_num, "reason": f"email already exists: {email}"})
-
-    db.commit()
-    return {"imported": imported, "errors": errors}
+    file_bytes = await file.read()
+    return import_entity(entity="contacts", file_bytes=file_bytes, fmt=fmt, session=db)
 
 
 @router.get("/{contact_id}")
