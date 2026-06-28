@@ -3,17 +3,21 @@ import {
   BarChart3,
   Bell,
   Building2,
+  Calendar,
   ContactRound,
+  Download,
   LogOut,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
   Trash2,
+  Upload,
   UserRound,
 } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-type Tab = 'pipeline' | 'contacts' | 'accounts' | 'today' | 'stats';
+type Tab = 'pipeline' | 'contacts' | 'accounts' | 'today' | 'stats' | 'activities';
 
 type User = {
   id?: number;
@@ -61,6 +65,19 @@ type Account = {
   owner_id?: number | null;
   contact_count?: number | null;
   contacts?: Contact[];
+};
+
+type Activity = {
+  id: number;
+  title: string;
+  type: string;
+  body?: string | null;
+  contact_id?: number | null;
+  deal_id?: number | null;
+  due_at?: string | null;
+  completed_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 type Reminder = {
@@ -151,6 +168,7 @@ export function App() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [today, setToday] = useState<Reminder[]>([]);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [filteredDeals, setFilteredDeals] = useState<Deal[] | null>(null);
@@ -161,7 +179,15 @@ export function App() {
   const [draggedDealId, setDraggedDealId] = useState<number | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   const [modal, setModal] = useState<'deal' | 'contact' | 'account' | null>(null);
+  const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
+  const [dealToEdit, setDealToEdit] = useState<Deal | null>(null);
+  const [activityToEdit, setActivityToEdit] = useState<Activity | null>(null);
+  const [showNewActivity, setShowNewActivity] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -173,7 +199,7 @@ export function App() {
   const refreshCore = useCallback(async () => {
     setLoading(true);
     try {
-      const [stagesRes, dealsRes, contactsRes, accountsRes, todayRes, savedRes, forecastRes] =
+      const [stagesRes, dealsRes, contactsRes, accountsRes, todayRes, savedRes, forecastRes, activitiesRes] =
         await Promise.all([
           apiFetch('/pipeline/stages'),
           apiFetch('/deals'),
@@ -182,6 +208,7 @@ export function App() {
           apiFetch('/reminders/today'),
           apiFetch('/saved-views'),
           apiFetch('/forecast'),
+          apiFetch('/activities'),
         ]);
 
       if (stagesRes.ok) setStages(await stagesRes.json());
@@ -194,6 +221,7 @@ export function App() {
         const forecast = await forecastRes.json();
         setForecastTotal(Number(forecast.total || 0));
       }
+      if (activitiesRes.ok) setActivities(await activitiesRes.json());
     } catch {
       showToast('Could not load CloseLoop data');
     } finally {
@@ -288,6 +316,7 @@ export function App() {
               ['pipeline', BarChart3, 'Pipeline'],
               ['contacts', ContactRound, 'Contacts'],
               ['accounts', Building2, 'Accounts'],
+              ['activities', Calendar, 'Activities'],
               ['today', Bell, 'Today'],
               ['stats', BarChart3, 'Stats'],
             ].map(([tab, Icon, label]) => (
@@ -324,43 +353,66 @@ export function App() {
 
       <main className="px-4 py-5 lg:px-6">
         {activeTab === 'pipeline' && (
-          <PipelineView
-            activeSavedView={activeSavedView.deals}
-            contacts={contacts}
-            deals={filteredDeals ?? deals}
-            forecastTotal={forecastTotal}
-            loading={loading}
-            onApplySavedView={(id, name) => applySavedView(id, 'deals', name)}
-            onClearSavedView={() => {
-              setFilteredDeals(null);
-              setActiveSavedView((prev) => ({ ...prev, deals: undefined }));
-            }}
-            onCreateDeal={(body) => createDeal(body)}
-            onMoveDeal={(dealId, stageId) => moveDeal(dealId, stageId)}
-            onOpenModal={() => setModal('deal')}
-            savedViews={savedViews.filter((view) => view.entity_type === 'deals')}
-            setDraggedDealId={setDraggedDealId}
-            draggedDealId={draggedDealId}
-            stages={stages}
-          />
+          selectedDeal ? (
+            <DealDetailView
+              deal={selectedDeal}
+              contacts={contacts}
+              onBack={() => setSelectedDeal(null)}
+              onEdit={() => setDealToEdit(selectedDeal)}
+              onDelete={() => void deleteDeal(selectedDeal.id)}
+            />
+          ) : (
+            <PipelineView
+              activeSavedView={activeSavedView.deals}
+              contacts={contacts}
+              deals={filteredDeals ?? deals}
+              forecastTotal={forecastTotal}
+              loading={loading}
+              onApplySavedView={(id, name) => applySavedView(id, 'deals', name)}
+              onClearSavedView={() => {
+                setFilteredDeals(null);
+                setActiveSavedView((prev) => ({ ...prev, deals: undefined }));
+              }}
+              onCreateDeal={(body) => createDeal(body)}
+              onMoveDeal={(dealId, stageId) => moveDeal(dealId, stageId)}
+              onOpenModal={() => setModal('deal')}
+              onOpenDeal={(d) => setSelectedDeal(d)}
+              savedViews={savedViews.filter((view) => view.entity_type === 'deals')}
+              setDraggedDealId={setDraggedDealId}
+              draggedDealId={draggedDealId}
+              stages={stages}
+            />
+          )
         )}
         {activeTab === 'contacts' && (
-          <ContactsView
-            accounts={accounts}
-            activeSavedView={activeSavedView.contacts}
-            contacts={filteredContacts ?? contacts}
-            onApplySavedView={(id, name) => applySavedView(id, 'contacts', name)}
-            onClearSavedView={() => {
-              setFilteredContacts(null);
-              setActiveSavedView((prev) => ({ ...prev, contacts: undefined }));
-            }}
-            onOpenAccount={(id) => {
-              setActiveTab('accounts');
-              setSelectedAccountId(id);
-            }}
-            onOpenModal={() => setModal('contact')}
-            savedViews={savedViews.filter((view) => view.entity_type === 'contacts')}
-          />
+          selectedContact ? (
+            <ContactDetailView
+              contact={selectedContact}
+              onBack={() => setSelectedContact(null)}
+              onEdit={() => setContactToEdit(selectedContact)}
+              onDelete={() => void deleteContact(selectedContact.id)}
+            />
+          ) : (
+            <ContactsView
+              accounts={accounts}
+              activeSavedView={activeSavedView.contacts}
+              contacts={filteredContacts ?? contacts}
+              onApplySavedView={(id, name) => applySavedView(id, 'contacts', name)}
+              onClearSavedView={() => {
+                setFilteredContacts(null);
+                setActiveSavedView((prev) => ({ ...prev, contacts: undefined }));
+              }}
+              onOpenAccount={(id) => {
+                setActiveTab('accounts');
+                setSelectedAccountId(id);
+              }}
+              onOpenContact={(contact) => setSelectedContact(contact)}
+              onOpenModal={() => setModal('contact')}
+              onImport={() => setShowImportModal(true)}
+              onExport={() => void exportContacts()}
+              savedViews={savedViews.filter((view) => view.entity_type === 'contacts')}
+            />
+          )
         )}
         {activeTab === 'accounts' && (
           <AccountsView
@@ -374,6 +426,24 @@ export function App() {
             onOpenAccount={(id) => setSelectedAccountId(id)}
             onOpenModal={() => setModal('account')}
           />
+        )}
+        {activeTab === 'activities' && (
+          selectedActivity ? (
+            <ActivityDetailView
+              activity={selectedActivity}
+              contacts={contacts}
+              onBack={() => setSelectedActivity(null)}
+              onEdit={() => setActivityToEdit(selectedActivity)}
+              onDelete={() => void deleteActivity(selectedActivity.id)}
+            />
+          ) : (
+            <ActivitiesView
+              activities={activities}
+              contacts={contacts}
+              onOpenModal={() => setShowNewActivity(true)}
+              onOpenActivity={(a) => setSelectedActivity(a)}
+            />
+          )
         )}
         {activeTab === 'today' && <TodayView reminders={today} onDismiss={dismissReminder} />}
         {activeTab === 'stats' && <StatsView stats={stats} />}
@@ -408,6 +478,57 @@ export function App() {
           }}
         />
       )}
+      {showNewActivity && (
+        <ActivityModal
+          contacts={contacts}
+          onClose={() => setShowNewActivity(false)}
+          onSubmit={async (body) => {
+            await createActivity(body);
+            setShowNewActivity(false);
+          }}
+        />
+      )}
+      {activityToEdit && (
+        <ActivityModal
+          activity={activityToEdit}
+          contacts={contacts}
+          onClose={() => setActivityToEdit(null)}
+          onSubmit={async (body) => {
+            await updateActivity(activityToEdit.id, body);
+            setActivityToEdit(null);
+          }}
+        />
+      )}
+      {contactToEdit && (
+        <ContactEditModal
+          contact={contactToEdit}
+          onClose={() => setContactToEdit(null)}
+          onSubmit={async (body) => {
+            await updateContact(contactToEdit.id, body);
+            setContactToEdit(null);
+          }}
+        />
+      )}
+      {dealToEdit && (
+        <DealEditModal
+          deal={dealToEdit}
+          onClose={() => setDealToEdit(null)}
+          onSubmit={async (body) => {
+            await updateDeal(dealToEdit.id, body);
+            setDealToEdit(null);
+          }}
+        />
+      )}
+      {showImportModal && (
+        <ImportModal
+          onClose={() => setShowImportModal(false)}
+          onSuccess={(count) => {
+            showToast(`Imported ${count} contact${count !== 1 ? 's' : ''}`);
+            setShowImportModal(false);
+            void refreshCore();
+          }}
+        />
+      )}
 
       {toast && (
         <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-xl">
@@ -427,6 +548,22 @@ export function App() {
     setDeals((prev) => [...prev, deal]);
   }
 
+  async function updateDeal(id: number, body: Partial<Deal>) {
+    const response = await apiFetch(`/deals/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    if (!response.ok) { showToast('Failed to update deal'); return; }
+    const updated = await response.json();
+    setDeals((prev) => prev.map((d) => (d.id === id ? updated : d)));
+    if (selectedDeal?.id === id) setSelectedDeal(updated);
+  }
+
+  async function deleteDeal(id: number) {
+    if (!window.confirm('Delete this deal?')) return;
+    const response = await apiFetch(`/deals/${id}`, { method: 'DELETE' });
+    if (!response.ok) { showToast('Failed to delete deal'); return; }
+    setDeals((prev) => prev.filter((d) => d.id !== id));
+    setSelectedDeal(null);
+  }
+
   async function createContact(body: Partial<Contact> & { name: string }) {
     const response = await apiFetch('/contacts', { method: 'POST', body: JSON.stringify(body) });
     if (!response.ok) {
@@ -437,6 +574,22 @@ export function App() {
     setContacts((prev) => [...prev, contact]);
   }
 
+  async function updateContact(id: number, body: Partial<Contact>) {
+    const response = await apiFetch(`/contacts/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    if (!response.ok) { showToast('Failed to update contact'); return; }
+    const updated = await response.json();
+    setContacts((prev) => prev.map((c) => (c.id === id ? updated : c)));
+    if (selectedContact?.id === id) setSelectedContact(updated);
+  }
+
+  async function deleteContact(id: number) {
+    if (!window.confirm('Delete this contact?')) return;
+    const response = await apiFetch(`/contacts/${id}`, { method: 'DELETE' });
+    if (!response.ok) { showToast('Failed to delete contact'); return; }
+    setContacts((prev) => prev.filter((c) => c.id !== id));
+    setSelectedContact(null);
+  }
+
   async function createAccount(body: Partial<Account> & { name: string }) {
     const response = await apiFetch('/accounts', { method: 'POST', body: JSON.stringify(body) });
     if (!response.ok) {
@@ -445,6 +598,29 @@ export function App() {
     }
     const account = await response.json();
     setAccounts((prev) => [...prev, account]);
+  }
+
+  async function createActivity(body: { title: string; type: string; body?: string; contact_id?: number }) {
+    const response = await apiFetch('/activities', { method: 'POST', body: JSON.stringify(body) });
+    if (!response.ok) { showToast('Failed to create activity'); return; }
+    const activity = await response.json();
+    setActivities((prev) => [...prev, activity]);
+  }
+
+  async function updateActivity(id: number, body: Partial<Activity>) {
+    const response = await apiFetch(`/activities/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    if (!response.ok) { showToast('Failed to update activity'); return; }
+    const updated = await response.json();
+    setActivities((prev) => prev.map((a) => (a.id === id ? updated : a)));
+    if (selectedActivity?.id === id) setSelectedActivity(updated);
+  }
+
+  async function deleteActivity(id: number) {
+    if (!window.confirm('Delete this activity?')) return;
+    const response = await apiFetch(`/activities/${id}`, { method: 'DELETE' });
+    if (!response.ok) { showToast('Failed to delete activity'); return; }
+    setActivities((prev) => prev.filter((a) => a.id !== id));
+    setSelectedActivity(null);
   }
 
   async function moveDeal(dealId: number, stageId: number) {
@@ -493,6 +669,21 @@ export function App() {
     setAccounts((prev) => prev.filter((account) => account.id !== id));
     setSelectedAccountId(null);
     setSelectedAccount(null);
+  }
+
+  async function exportContacts() {
+    const res = await apiFetch('/contacts/export');
+    if (!res.ok) { showToast('Export failed'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'contacts.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Contacts exported');
   }
 }
 
@@ -609,6 +800,7 @@ function PipelineView({
   onClearSavedView,
   onMoveDeal,
   onOpenModal,
+  onOpenDeal,
   savedViews,
   setDraggedDealId,
   stages,
@@ -624,6 +816,7 @@ function PipelineView({
   onCreateDeal: (body: { title: string; contact_id: number; value: number }) => Promise<void>;
   onMoveDeal: (dealId: number, stageId: number) => void;
   onOpenModal: () => void;
+  onOpenDeal: (deal: Deal) => void;
   savedViews: SavedView[];
   setDraggedDealId: (id: number | null) => void;
   stages: PipelineStage[];
@@ -666,7 +859,7 @@ function PipelineView({
                 }}
               >
                 {stageDeals.map((deal) => (
-                  <DealCard key={deal.id} contact={deal.contact_id ? contactById.get(deal.contact_id) : undefined} deal={deal} onDragStart={setDraggedDealId} onDragEnd={() => setDraggedDealId(null)} />
+                  <DealCard key={deal.id} contact={deal.contact_id ? contactById.get(deal.contact_id) : undefined} deal={deal} onDragStart={setDraggedDealId} onDragEnd={() => setDraggedDealId(null)} onOpenDeal={onOpenDeal} />
                 ))}
               </div>
               <button className="secondary-button mt-3 w-full justify-center border-dashed bg-white/70" onClick={onOpenModal} type="button">
@@ -696,16 +889,19 @@ function DealCard({
   deal,
   onDragEnd,
   onDragStart,
+  onOpenDeal,
 }: {
   contact?: Contact;
   deal: Deal;
   onDragEnd: () => void;
   onDragStart: (id: number) => void;
+  onOpenDeal: (deal: Deal) => void;
 }) {
   return (
     <div
-      className="cursor-grab rounded-md border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow-md active:cursor-grabbing"
+      className="cursor-pointer rounded-md border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow-md"
       draggable
+      onClick={() => onOpenDeal(deal)}
       onDragEnd={onDragEnd}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = 'move';
@@ -722,6 +918,60 @@ function DealCard({
   );
 }
 
+function DealDetailView({
+  deal,
+  contacts,
+  onBack,
+  onEdit,
+  onDelete,
+}: {
+  deal: Deal;
+  contacts: Contact[];
+  onBack: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const contact = contacts.find((c) => c.id === deal.contact_id);
+  return (
+    <>
+      <SectionHeader
+        title={deal.title}
+        action={
+          <div className="flex gap-2">
+            <button className="secondary-button" onClick={onBack} type="button">
+              <ArrowLeft size={16} aria-hidden="true" />
+              Back
+            </button>
+            <button className="secondary-button" onClick={onEdit} type="button">
+              <Pencil size={16} aria-hidden="true" />
+              Edit
+            </button>
+            <button className="danger-button" onClick={onDelete} type="button">
+              <Trash2 size={16} aria-hidden="true" />
+              Delete
+            </button>
+          </div>
+        }
+      />
+      <div className="panel p-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ['Value', money(deal.value)],
+            ['Stage', deal.stage || 'Not set'],
+            ['Probability', `${Math.round(Number(deal.probability || 0) * 100)}%`],
+            ['Contact', contact?.name || deal.contact_name || 'Not set'],
+          ].map(([label, value]) => (
+            <div key={label as string}>
+              <div className="text-xs font-bold uppercase text-slate-500">{label as string}</div>
+              <div className="mt-1 text-sm text-slate-800">{value as string}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function ContactsView({
   accounts,
   activeSavedView,
@@ -729,7 +979,10 @@ function ContactsView({
   onApplySavedView,
   onClearSavedView,
   onOpenAccount,
+  onOpenContact,
   onOpenModal,
+  onImport,
+  onExport,
   savedViews,
 }: {
   accounts: Account[];
@@ -738,7 +991,10 @@ function ContactsView({
   onApplySavedView: (id: number, name: string) => void;
   onClearSavedView: () => void;
   onOpenAccount: (id: number) => void;
+  onOpenContact: (contact: Contact) => void;
   onOpenModal: () => void;
+  onImport: () => void;
+  onExport: () => void;
   savedViews: SavedView[];
 }) {
   const accountById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
@@ -747,10 +1003,20 @@ function ContactsView({
       <SectionHeader
         title="Contacts"
         action={
-          <button className="primary-button" onClick={onOpenModal} type="button">
-            <Plus size={16} aria-hidden="true" />
-            New Contact
-          </button>
+          <div className="flex gap-2">
+            <button className="secondary-button" onClick={onImport} type="button">
+              <Upload size={16} aria-hidden="true" />
+              Import CSV
+            </button>
+            <button className="secondary-button" onClick={onExport} type="button">
+              <Download size={16} aria-hidden="true" />
+              Export CSV
+            </button>
+            <button className="primary-button" onClick={onOpenModal} type="button">
+              <Plus size={16} aria-hidden="true" />
+              New Contact
+            </button>
+          </div>
         }
       />
       <SavedViewsBar views={savedViews} activeName={activeSavedView} onApply={onApplySavedView} onClear={onClearSavedView} />
@@ -771,7 +1037,15 @@ function ContactsView({
               const account = contact.account_id ? accountById.get(contact.account_id) : null;
               return (
                 <tr key={contact.id} className="hover:bg-slate-50">
-                  <td className="table-cell font-semibold text-slate-900">{contact.name}</td>
+                  <td className="table-cell font-semibold text-slate-900">
+                    <button
+                      className="font-semibold text-blue-700 hover:underline"
+                      onClick={() => onOpenContact(contact)}
+                      type="button"
+                    >
+                      {contact.name}
+                    </button>
+                  </td>
                   <td className="table-cell">{contact.email || ''}</td>
                   <td className="table-cell">{contact.phone || ''}</td>
                   <td className="table-cell">{contact.company || ''}</td>
@@ -797,6 +1071,57 @@ function ContactsView({
             )}
           </tbody>
         </table>
+      </div>
+    </>
+  );
+}
+
+function ContactDetailView({
+  contact,
+  onBack,
+  onEdit,
+  onDelete,
+}: {
+  contact: Contact;
+  onBack: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <>
+      <SectionHeader
+        title={contact.name}
+        action={
+          <div className="flex gap-2">
+            <button className="secondary-button" onClick={onBack} type="button">
+              <ArrowLeft size={16} aria-hidden="true" />
+              Back
+            </button>
+            <button className="secondary-button" onClick={onEdit} type="button">
+              <Pencil size={16} aria-hidden="true" />
+              Edit
+            </button>
+            <button className="danger-button" onClick={onDelete} type="button">
+              <Trash2 size={16} aria-hidden="true" />
+              Delete
+            </button>
+          </div>
+        }
+      />
+      <div className="panel p-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            ['Email', contact.email],
+            ['Phone', contact.phone],
+            ['Company', contact.company],
+            ['Lead Score', Number(contact.lead_score || 0).toFixed(1)],
+          ].map(([label, value]) => (
+            <div key={label as string}>
+              <div className="text-xs font-bold uppercase text-slate-500">{label as string}</div>
+              <div className="mt-1 text-sm text-slate-800">{(value as string) || 'Not set'}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </>
   );
@@ -933,6 +1258,135 @@ function AccountsView({
   );
 }
 
+function ActivitiesView({
+  activities,
+  contacts,
+  onOpenModal,
+  onOpenActivity,
+}: {
+  activities: Activity[];
+  contacts: Contact[];
+  onOpenModal: () => void;
+  onOpenActivity: (activity: Activity) => void;
+}) {
+  const contactById = useMemo(() => new Map(contacts.map((c) => [c.id, c])), [contacts]);
+  return (
+    <>
+      <SectionHeader
+        title="Activities"
+        action={
+          <button className="primary-button" onClick={onOpenModal} type="button">
+            <Plus size={16} aria-hidden="true" />
+            New Activity
+          </button>
+        }
+      />
+      <div className="panel overflow-hidden">
+        <table className="w-full border-collapse">
+          <thead className="table-head">
+            <tr>
+              <th className="px-4 py-3">Title</th>
+              <th className="px-4 py-3">Type</th>
+              <th className="px-4 py-3">Contact</th>
+              <th className="px-4 py-3">Due</th>
+            </tr>
+          </thead>
+          <tbody>
+            {activities.map((activity) => {
+              const contact = activity.contact_id ? contactById.get(activity.contact_id) : null;
+              return (
+                <tr key={activity.id} className="hover:bg-slate-50">
+                  <td className="table-cell font-semibold text-slate-900">
+                    <button
+                      className="font-semibold text-blue-700 hover:underline text-left"
+                      onClick={() => onOpenActivity(activity)}
+                      type="button"
+                    >
+                      {activity.title}
+                    </button>
+                  </td>
+                  <td className="table-cell">
+                    <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 uppercase">{activity.type}</span>
+                  </td>
+                  <td className="table-cell">{contact?.name || ''}</td>
+                  <td className="table-cell">{activity.due_at ? new Date(activity.due_at).toLocaleDateString() : ''}</td>
+                </tr>
+              );
+            })}
+            {activities.length === 0 && (
+              <tr>
+                <td className="px-4 py-10 text-center text-sm text-slate-500" colSpan={4}>
+                  No activities yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function ActivityDetailView({
+  activity,
+  contacts,
+  onBack,
+  onEdit,
+  onDelete,
+}: {
+  activity: Activity;
+  contacts: Contact[];
+  onBack: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const contact = contacts.find((c) => c.id === activity.contact_id);
+  return (
+    <>
+      <SectionHeader
+        title={activity.title}
+        action={
+          <div className="flex gap-2">
+            <button className="secondary-button" onClick={onBack} type="button">
+              <ArrowLeft size={16} aria-hidden="true" />
+              Back
+            </button>
+            <button className="secondary-button" onClick={onEdit} type="button">
+              <Pencil size={16} aria-hidden="true" />
+              Edit
+            </button>
+            <button className="danger-button" onClick={onDelete} type="button">
+              <Trash2 size={16} aria-hidden="true" />
+              Delete
+            </button>
+          </div>
+        }
+      />
+      <div className="panel p-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ['Type', activity.type],
+            ['Contact', contact?.name || 'None'],
+            ['Due', activity.due_at ? new Date(activity.due_at).toLocaleString() : 'Not set'],
+            ['Completed', activity.completed_at ? new Date(activity.completed_at).toLocaleString() : 'No'],
+          ].map(([label, value]) => (
+            <div key={label as string}>
+              <div className="text-xs font-bold uppercase text-slate-500">{label as string}</div>
+              <div className="mt-1 text-sm text-slate-800">{(value as string) || 'Not set'}</div>
+            </div>
+          ))}
+        </div>
+        {activity.body && (
+          <div className="mt-4">
+            <div className="text-xs font-bold uppercase text-slate-500">Notes</div>
+            <div className="mt-1 text-sm text-slate-800 whitespace-pre-wrap">{activity.body}</div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function TodayView({ reminders, onDismiss }: { reminders: Reminder[]; onDismiss: (id: number) => void }) {
   return (
     <>
@@ -1046,6 +1500,34 @@ function DealModal({ contacts, onClose, onSubmit }: { contacts: Contact[]; onClo
   );
 }
 
+function DealEditModal({
+  deal,
+  onClose,
+  onSubmit,
+}: {
+  deal: Deal;
+  onClose: () => void;
+  onSubmit: (body: Partial<Deal>) => Promise<void>;
+}) {
+  const [title, setTitle] = useState(deal.title);
+  const [value, setValue] = useState(String(deal.value ?? ''));
+  return (
+    <ModalShell title="Edit Deal" onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSubmit({ title: title.trim(), value: Number(value || 0) });
+        }}
+      >
+        <TextField label="Title" value={title} onChange={setTitle} required />
+        <TextField label="Value" value={value} onChange={setValue} type="number" />
+        <ModalActions onClose={onClose} submitLabel="Save" />
+      </form>
+    </ModalShell>
+  );
+}
+
 function ContactModal({ accounts, onClose, onSubmit }: { accounts: Account[]; onClose: () => void; onSubmit: (body: Partial<Contact> & { name: string }) => Promise<void> }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -1087,6 +1569,38 @@ function ContactModal({ accounts, onClose, onSubmit }: { accounts: Account[]; on
   );
 }
 
+function ContactEditModal({
+  contact,
+  onClose,
+  onSubmit,
+}: {
+  contact: Contact;
+  onClose: () => void;
+  onSubmit: (body: Partial<Contact>) => Promise<void>;
+}) {
+  const [name, setName] = useState(contact.name);
+  const [email, setEmail] = useState(contact.email ?? '');
+  const [phone, setPhone] = useState(contact.phone ?? '');
+  const [company, setCompany] = useState(contact.company ?? '');
+  return (
+    <ModalShell title="Edit Contact" onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSubmit({ name: name.trim(), email: email.trim() || undefined, phone: phone.trim() || undefined, company: company.trim() || undefined });
+        }}
+      >
+        <TextField label="Name" value={name} onChange={setName} required />
+        <TextField label="Email" value={email} onChange={setEmail} type="email" />
+        <TextField label="Phone" value={phone} onChange={setPhone} />
+        <TextField label="Company" value={company} onChange={setCompany} />
+        <ModalActions onClose={onClose} submitLabel="Save" />
+      </form>
+    </ModalShell>
+  );
+}
+
 function AccountModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (body: Partial<Account> & { name: string }) => Promise<void> }) {
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
@@ -1113,6 +1627,161 @@ function AccountModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (b
         <TextField label="Website" value={website} onChange={setWebsite} />
         <TextField label="Phone" value={phone} onChange={setPhone} />
         <ModalActions onClose={onClose} submitLabel="Create" />
+      </form>
+    </ModalShell>
+  );
+}
+
+const ACTIVITY_TYPES = ['call', 'email', 'meeting', 'note'] as const;
+
+function ActivityModal({
+  activity,
+  contacts,
+  onClose,
+  onSubmit,
+}: {
+  activity?: Activity;
+  contacts: Contact[];
+  onClose: () => void;
+  onSubmit: (body: { title: string; type: string; body?: string; contact_id?: number }) => Promise<void>;
+}) {
+  const [title, setTitle] = useState(activity?.title ?? '');
+  const [type, setType] = useState(activity?.type ?? 'call');
+  const [body, setBody] = useState(activity?.body ?? '');
+  const [contactId, setContactId] = useState(String(activity?.contact_id ?? ''));
+  const isEdit = Boolean(activity);
+  return (
+    <ModalShell title={isEdit ? 'Edit Activity' : 'New Activity'} onClose={onClose}>
+      <form
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSubmit({
+            title: title.trim(),
+            type,
+            body: body.trim() || undefined,
+            contact_id: contactId ? Number(contactId) : undefined,
+          });
+        }}
+      >
+        <TextField label="Title" value={title} onChange={setTitle} required />
+        <label className="block">
+          <span className="field-label">Type</span>
+          <select className="field-input" value={type} onChange={(e) => setType(e.target.value)}>
+            {ACTIVITY_TYPES.map((t) => (
+              <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="field-label">Contact</span>
+          <select className="field-input" value={contactId} onChange={(e) => setContactId(e.target.value)}>
+            <option value="">None</option>
+            {contacts.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="field-label">Notes</span>
+          <textarea
+            className="field-input"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={3}
+          />
+        </label>
+        <ModalActions onClose={onClose} submitLabel={isEdit ? 'Save' : 'Create'} />
+      </form>
+    </ModalShell>
+  );
+}
+
+function ImportModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: (count: number) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState('');
+  const [result, setResult] = useState<{ imported: number; errors: { row: number; reason: string }[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const file = fileRef.current?.files?.[0];
+    if (!file) { setError('Please select a CSV file'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const csv = await file.text();
+      const res = await apiFetch('/contacts/import', {
+        method: 'POST',
+        body: JSON.stringify({ csv }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.detail || 'Import failed');
+        return;
+      }
+      setResult(data);
+      if (data.errors?.length === 0) {
+        onSuccess(data.imported);
+      }
+    } catch {
+      setError('Import failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <ModalShell title="Import Complete" onClose={onClose}>
+        <div className="space-y-3">
+          <p className="text-sm text-slate-700">
+            Imported {result.imported} contact{result.imported !== 1 ? 's' : ''}
+            {result.errors.length > 0 ? ` with ${result.errors.length} error${result.errors.length !== 1 ? 's' : ''}` : ''}.
+          </p>
+          {result.errors.length > 0 && (
+            <ul className="space-y-1 text-xs text-red-600">
+              {result.errors.map((e) => (
+                <li key={e.row}>Row {e.row}: {e.reason}</li>
+              ))}
+            </ul>
+          )}
+          <div className="flex justify-end pt-2">
+            <button className="primary-button" onClick={onClose} type="button">Close</button>
+          </div>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell title="Import Contacts" onClose={onClose}>
+      <form className="space-y-4" onSubmit={(e) => void handleSubmit(e)}>
+        <div>
+          <p className="text-sm text-slate-600 mb-3">
+            Upload a CSV file with columns: name, email, phone, company.
+          </p>
+          <label className="block">
+            <span className="field-label">CSV File</span>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-700"
+              onChange={(e) => setFileName(e.target.files?.[0]?.name ?? '')}
+            />
+          </label>
+          {fileName && <p className="mt-1 text-xs text-slate-500">Selected: {fileName}</p>}
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <ModalActions onClose={onClose} submitLabel={busy ? 'Importing…' : 'Import'} />
       </form>
     </ModalShell>
   );

@@ -31,13 +31,15 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  // Auto-start the FastAPI server on E2E_PORT; reuse if already running
+  // Auto-start the FastAPI server on E2E_PORT; reuse if already running.
+  // stdout/stderr are not piped: piping on ARM64 fills the OS pipe buffer
+  // after ~10 tests and stalls uvicorn, causing subsequent tests to time out.
   webServer: {
-    command: `uvicorn app.main:app --host 127.0.0.1 --port ${E2E_PORT}`,
+    command: `uvicorn app.main:app --host 127.0.0.1 --port ${E2E_PORT} --log-level warning`,
     url: `http://localhost:${E2E_PORT}/health`,
     reuseExistingServer: true,
     timeout: 30_000,
-    stdout: 'pipe',
-    stderr: 'pipe',
+    stdout: 'ignore',
+    stderr: 'ignore',
   },
 });

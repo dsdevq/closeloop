@@ -62,18 +62,36 @@ npx playwright test --reporter=list
 
 **Smoke test results (verified 2026-06-28): 22 passed / 0 failed / 6 fixme-skipped**
 
-The stage_id bug (#2 below) was fixed in `app/routers/deals.py`. The 6 genuine UI gaps are
-marked `test.fixme` in `e2e/smoke.spec.ts` — they will be skipped (not failed) until implemented.
+**Full-coverage test results (verified 2026-06-28): 22 passed / 0 failed** (see below)
+
+The stage_id bug (#2 below) was fixed in `app/routers/deals.py`. The 6 `test.fixme` items in
+`e2e/smoke.spec.ts` remain as skipped defect markers for UI gaps NOT yet addressed in the smoke
+suite; however the NEW `e2e/full-coverage.spec.ts` suite implements all 22 named tests that DO
+pass (including the UI features added to the SPA).
+
+> **ARM64 pipe gotcha** — `playwright.config.ts` uses `stdout: 'ignore', stderr: 'ignore'` for the
+> webServer. On ARM64 Linux the OS pipe buffer (~64 KB) fills after ~10 tests when set to `'pipe'`,
+> blocking uvicorn's logging writes and causing subsequent tests to get ERR_CONNECTION_REFUSED.
+> Do NOT change these back to `'pipe'`.
 
 | # | Status | Test | Note |
 |---|--------|------|------|
-| 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | No per-contact detail/edit page in SPA |
+| 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | Smoke skipped; covered by full-coverage.spec.ts 'contacts - detail' |
 | 2 | ✅ Fixed | Deals CRUD › create deal via modal — appears on kanban | `POST /deals` now sets `stage_id` to first pipeline stage |
-| 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | No per-deal detail page in SPA |
-| 4 | `test.fixme` | Accounts CRUD › edit account [UI gap] | No edit form/button in account detail view |
-| 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | No Activities tab in SPA navigation |
-| 6 | `test.fixme` | Import › import UI trigger [UI gap] | No CSV import button/modal in SPA |
-| 7 | `test.fixme` | Export › export UI trigger [UI gap] | No CSV export button in SPA |
+| 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | Smoke skipped; covered by full-coverage.spec.ts 'deals - detail' |
+| 4 | `test.fixme` | Accounts CRUD › edit account [UI gap] | No edit form in account detail view (still outstanding) |
+| 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | ✅ Activities tab added to SPA; full-coverage.spec.ts covers it |
+| 6 | `test.fixme` | Import › import UI trigger [UI gap] | ✅ Import CSV button added; full-coverage.spec.ts covers it |
+| 7 | `test.fixme` | Export › export UI trigger [UI gap] | ✅ Export CSV button added; full-coverage.spec.ts covers it |
+
+**Full-coverage test results (verified 2026-06-28): 22 passed / 0 failed**
+
+`e2e/full-coverage.spec.ts` contains 22 tests covering route coverage, interactive controls,
+Contacts/Deals/Activities CRUD (5 tests each), Import/Export, and Auth flows. Run with:
+
+```bash
+npx playwright test e2e/full-coverage.spec.ts --reporter=list
+```
 
 ## Repo layout
 
@@ -85,6 +103,7 @@ app/
   models.py      — all SQLAlchemy ORM models (incl. User, RefreshToken, Tag, ContactTag, DealTag,
                    Account, PipelineStage)                                           [v2]
   core/          — pure functions only, zero I/O
+
     clock.py     — Clock class + get_clock FastAPI dependency
     security.py  — hash_password, verify_password, create_access_token, create_refresh_token, decode_token [v1]
     stages.py    — stage state machine
@@ -114,10 +133,12 @@ tests/
   conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override, seeded admin+token)
   test_*.py      — one file per concern
 e2e/
-  smoke.spec.ts  — Playwright headless smoke tests (28 tests; 21 pass, 7 fail as defect markers)
-  tsconfig.json  — TypeScript config for e2e tests
+  smoke.spec.ts       — Playwright headless smoke tests (22 pass, 6 fixme-skipped defect markers)
+  full-coverage.spec.ts — 22 named tests covering all clauses: route coverage, interactive
+                          controls, Contacts/Deals/Activities CRUD (5 each), Import/Export, Auth
+  tsconfig.json       — TypeScript config for e2e tests
   fixtures/
-    contacts.csv — sample CSV for manual import testing
+    contacts.csv — sample CSV for manual/automated import testing
 playwright.config.ts  — Playwright config (Chromium headless, port 8088, webServer auto-start)
   test_auth.py   — auth/role tests (register, login, refresh, logout, 401/403, rep isolation) [v1]
   test_accounts.py  — account CRUD, contact-account linking, role enforcement  [v2]
@@ -261,12 +282,29 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 - `_seed_pipeline_stages()` seeds 6 default stages and then backfills `deal.stage_id` from legacy `deal.stage` string via `_STAGE_NAME_MAP`.
 - In tests, `conftest.py` does NOT call lifespan (and therefore does NOT seed pipeline stages). Tests that need stages must insert them directly via the API or `PipelineStage` model.
 
-### Frontend (React v2.1)
-- React SPA preserves the v2 tabs: Pipeline, Contacts, Accounts, Today, Stats.
-- Accounts tab includes account list, account detail, linked contacts, create account, and delete account.
-- Contacts table keeps account click-through and create contact.
-- Kanban loads stages dynamically from `GET /pipeline/stages`, places deals by `deal.stage_id`, and drag-and-drop PATCHes `{ stage_id: <id> }` to `/deals/{id}`.
+### Frontend (React v2.2)
+- React SPA tabs: Pipeline, Contacts, Accounts, **Activities** (new), Today, Stats.
+- **Activities tab**: full CRUD list view — click activity title to open ActivityDetailView (back/edit/delete), New Activity modal with type/contact/notes fields.
+- **Contacts**: name is now a clickable button → ContactDetailView (back/edit/delete). Edit modal patches name/email/phone/company. **Import CSV** and **Export CSV** buttons added to section header.
+  - Import: reads file client-side with FileReader, POSTs JSON `{"csv": "..."}` to `/contacts/import`, shows result modal.
+  - Export: fetches `/contacts/export` with auth, converts to blob, triggers browser download via `<a download>` click.
+- **Pipeline**: DealCard is clickable → DealDetailView (back/edit/delete). Edit modal patches title/value.
+- Accounts tab unchanged (account detail/edit still an outstanding UI gap, smoke test.fixme #4).
+- Kanban loads stages dynamically from `GET /pipeline/stages`; drag-and-drop PATCHes `{ stage_id }`.
 - The same React bundle handles `/` and `/login.html`; login stores access/refresh tokens and current user in `localStorage`.
+
+### SPA repair log (covered by full-coverage.spec.ts)
+| File | Change | Test |
+|------|--------|------|
+| `frontend/src/App.tsx` | Added `activities` state + `Calendar` tab | 'activities - list', 'activities - create' |
+| `frontend/src/App.tsx` | `ActivitiesView` + `ActivityDetailView` components | 'activities - detail', 'activities - update', 'activities - delete' |
+| `frontend/src/App.tsx` | `ActivityModal` (create + edit) | 'activities - create', 'activities - update' |
+| `frontend/src/App.tsx` | Contact name → clickable button, `ContactDetailView` | 'contacts - detail', 'contacts - update', 'contacts - delete' |
+| `frontend/src/App.tsx` | `ContactEditModal` (PATCH /contacts/:id) | 'contacts - update' |
+| `frontend/src/App.tsx` | `DealCard` onClick → `DealDetailView` | 'deals - detail', 'deals - update', 'deals - delete' |
+| `frontend/src/App.tsx` | `DealEditModal` (PATCH /deals/:id) | 'deals - update' |
+| `frontend/src/App.tsx` | `ImportModal` (file → FileReader → POST /contacts/import) | 'import - upload triggers feedback' |
+| `frontend/src/App.tsx` | `exportContacts()` (fetch → blob → `<a download>`) | 'export - download initiated' |
 
 ### Key decisions (v2)
 | # | Decision |
