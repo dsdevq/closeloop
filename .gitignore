@@ -28,3 +28,7 @@ frontend/.vite/
 
 # OS
 .DS_Store
+
+# Playwright test artifacts (screenshots/traces from failed runs)
+test-results/.playwright-artifacts-*/
+playwright-report/
