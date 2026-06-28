@@ -33,6 +33,40 @@ python -m pytest -q
 pip install -q -r requirements.txt && python -m pytest -q
 ```
 
+### E2E / Playwright smoke tests
+
+```bash
+# Install Playwright (one-time per environment)
+npm install                          # installs @playwright/test at root
+npx playwright install chromium      # downloads headless Chromium
+
+# On Debian/Ubuntu without root (libXfixes.so.3 may be missing):
+#   curl -fsSL http://deb.debian.org/debian/pool/main/libx/libxfixes/libxfixes3_6.0.0-2+b5_arm64.deb \
+#        -o /tmp/lxf.deb && dpkg-deb -x /tmp/lxf.deb /tmp/lxf && mkdir -p ~/lib && cp /tmp/lxf/usr/lib/*/libXfixes.so.3* ~/lib/
+#   playwright.config.ts adds ~/lib to LD_LIBRARY_PATH automatically
+
+# Run the suite (server auto-starts on port 8088; set E2E_PORT to override)
+npx playwright test --reporter=list
+
+# Credentials: TEST_USER / TEST_PASS env vars (default: admin@closeloop.com / admin123)
+# Note: port 8000 may be occupied by a harness stub in some CI environments;
+#       the config uses E2E_PORT=8088 to avoid the conflict.
+```
+
+**Smoke test results (as of initial suite, 2026-06-28): 21 passed / 7 failed**
+
+Tests tagged `[UI gap]` or containing the comment "defect marker" are **expected to fail** — they catalogue missing UI features. Do NOT skip them; they are the repair backlog.
+
+| # | Failing test | Root cause |
+|---|-------------|------------|
+| 1 | Contacts CRUD › contact detail/edit UI [UI gap] | No per-contact detail/edit page in SPA |
+| 2 | Deals CRUD › create deal via modal — appears on kanban | **Bug:** `POST /deals` leaves `stage_id=null`; kanban filters by `stage_id` so card is invisible |
+| 3 | Deals CRUD › deal detail/edit UI [UI gap] | No per-deal detail page in SPA |
+| 4 | Accounts CRUD › edit account [UI gap] | No edit form/button in account detail view |
+| 5 | Activities CRUD › Activities nav tab [UI gap] | No Activities tab in SPA navigation |
+| 6 | Import › import UI trigger [UI gap] | No CSV import button/modal in SPA |
+| 7 | Export › export UI trigger [UI gap] | No CSV export button in SPA |
+
 ## Repo layout
 
 ```
@@ -71,6 +105,12 @@ frontend/
 tests/
   conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override, seeded admin+token)
   test_*.py      — one file per concern
+e2e/
+  smoke.spec.ts  — Playwright headless smoke tests (28 tests; 21 pass, 7 fail as defect markers)
+  tsconfig.json  — TypeScript config for e2e tests
+  fixtures/
+    contacts.csv — sample CSV for manual import testing
+playwright.config.ts  — Playwright config (Chromium headless, port 8088, webServer auto-start)
   test_auth.py   — auth/role tests (register, login, refresh, logout, 401/403, rep isolation) [v1]
   test_accounts.py  — account CRUD, contact-account linking, role enforcement  [v2]
   test_pipeline.py  — pipeline stage CRUD, deal stage_id PATCH, 409 on delete  [v2]
