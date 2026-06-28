@@ -26,11 +26,16 @@ uvicorn app.main:app --reload
 # Start server (preview/container — bind all interfaces)
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-# Run tests (must be green before every PR)
+# Run Python unit tests only
 python -m pytest -q
 
-# Verify gate (same as CI)
-pip install -q -r requirements.txt && python -m pytest -q
+# Run Playwright e2e tests only (FastAPI auto-starts on port 8088 via webServer config)
+npx playwright test --reporter=list
+
+# Full verify gate — BOTH must be green before every PR
+make verify
+# Equivalent one-liner:
+# pip install -q -r requirements.txt && python -m pytest -q && npm ci && npx playwright install --with-deps chromium && npx playwright test --reporter=list
 ```
 
 ### E2E / Playwright smoke tests
@@ -38,14 +43,17 @@ pip install -q -r requirements.txt && python -m pytest -q
 ```bash
 # Install Playwright (one-time per environment)
 npm install                          # installs @playwright/test at root
-npx playwright install chromium      # downloads headless Chromium
+npx playwright install --with-deps chromium   # downloads Chromium + system deps (needs sudo)
 
-# On Debian/Ubuntu without root (libXfixes.so.3 may be missing):
-#   curl -fsSL http://deb.debian.org/debian/pool/main/libx/libxfixes/libxfixes3_6.0.0-2+b5_arm64.deb \
-#        -o /tmp/lxf.deb && dpkg-deb -x /tmp/lxf.deb /tmp/lxf && mkdir -p ~/lib && cp /tmp/lxf/usr/lib/*/libXfixes.so.3* ~/lib/
-#   playwright.config.ts adds ~/lib to LD_LIBRARY_PATH automatically
+# ARM64 / no-root workaround (libXfixes.so.3 missing, can't sudo):
+#   1. Extract lib from .deb without root:
+#      curl -fsSL http://deb.debian.org/debian/pool/main/libx/libxfixes/libxfixes3_6.0.0-2+b5_arm64.deb \
+#           -o /tmp/lxf.deb && dpkg-deb -x /tmp/lxf.deb /tmp/lxf && mkdir -p ~/lib && cp /tmp/lxf/usr/lib/*/libXfixes.so.3* ~/lib/
+#   2. Install Chromium skipping host validation:
+#      PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1 npx playwright install chromium
+#   playwright.config.ts prepends ~/lib to LD_LIBRARY_PATH automatically.
 
-# Run the suite (server auto-starts on port 8088; set E2E_PORT to override)
+# Run the suite (server auto-starts on port 8088 via webServer config; set E2E_PORT to override)
 npx playwright test --reporter=list
 
 # Credentials: TEST_USER / TEST_PASS env vars (default: admin@closeloop.com / admin123)
@@ -53,7 +61,7 @@ npx playwright test --reporter=list
 #       the config uses E2E_PORT=8088 to avoid the conflict.
 ```
 
-**Smoke test results (as of repair, 2026-06-28): 22 passed / 0 failed / 6 fixme-skipped**
+**Smoke test results (verified 2026-06-28): 22 passed / 0 failed / 6 fixme-skipped**
 
 The stage_id bug (#2 below) was fixed in `app/routers/deals.py`. The 6 genuine UI gaps are
 marked `test.fixme` in `e2e/smoke.spec.ts` — they will be skipped (not failed) until implemented.
