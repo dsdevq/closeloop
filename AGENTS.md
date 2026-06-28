@@ -62,10 +62,17 @@ npx playwright test --reporter=list
 
 **Smoke test results (verified 2026-06-28): 22 passed / 0 failed / 6 fixme-skipped**
 
+**Full-coverage test results (verified 2026-06-28): 22 passed / 0 failed** (see below)
+
 The stage_id bug (#2 below) was fixed in `app/routers/deals.py`. The 6 `test.fixme` items in
 `e2e/smoke.spec.ts` remain as skipped defect markers for UI gaps NOT yet addressed in the smoke
 suite; however the NEW `e2e/full-coverage.spec.ts` suite implements all 22 named tests that DO
 pass (including the UI features added to the SPA).
+
+> **ARM64 pipe gotcha** — `playwright.config.ts` uses `stdout: 'ignore', stderr: 'ignore'` for the
+> webServer. On ARM64 Linux the OS pipe buffer (~64 KB) fills after ~10 tests when set to `'pipe'`,
+> blocking uvicorn's logging writes and causing subsequent tests to get ERR_CONNECTION_REFUSED.
+> Do NOT change these back to `'pipe'`.
 
 | # | Status | Test | Note |
 |---|--------|------|------|
