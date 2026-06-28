@@ -1,16 +1,17 @@
 .PHONY: verify test-unit test-e2e
 
 # Full CI gate: Python unit tests + Playwright e2e tests.
-#
-# On ARM64 without root (libXfixes.so.3 missing), do the one-time workaround
-# from AGENTS.md before running this target, then set
-# PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1 for the install step.
-verify: test-unit test-e2e
+# Delegates to scripts/verify.sh which auto-handles the ARM64 / no-root
+# libXfixes workaround (no manual pre-steps needed).
+verify:
+	bash scripts/verify.sh
 
 test-unit:
 	pip install -q -r requirements.txt
 	python -m pytest -q
 
+# Standalone e2e target — requires root for 'playwright install --with-deps'.
+# Use 'make verify' or 'bash scripts/verify.sh' for the auto-fallback path.
 test-e2e:
 	npm ci
 	npx playwright install --with-deps chromium

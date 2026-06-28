@@ -33,9 +33,8 @@ python -m pytest -q
 npx playwright test --reporter=list
 
 # Full verify gate — BOTH must be green before every PR
-make verify
-# Equivalent one-liner:
-# pip install -q -r requirements.txt && python -m pytest -q && npm ci && npx playwright install --with-deps chromium && npx playwright test --reporter=list
+bash scripts/verify.sh   # auto-handles ARM64 no-root workaround
+# or: make verify  (delegates to the same script)
 ```
 
 ### E2E / Playwright smoke tests
