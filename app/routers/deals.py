@@ -73,12 +73,15 @@ def create_deal(
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
+    first_stage = db.query(PipelineStage).order_by(PipelineStage.position).first()
+
     now = clk.now().isoformat()
     prob = stage_probability("lead")
     deal = Deal(
         title=body.title,
         contact_id=body.contact_id,
         stage="lead",
+        stage_id=first_stage.id if first_stage else None,
         value=body.value,
         probability=prob,
         owner_id=current_user.id,

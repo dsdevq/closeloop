@@ -53,19 +53,20 @@ npx playwright test --reporter=list
 #       the config uses E2E_PORT=8088 to avoid the conflict.
 ```
 
-**Smoke test results (as of initial suite, 2026-06-28): 21 passed / 7 failed**
+**Smoke test results (as of repair, 2026-06-28): 22 passed / 0 failed / 6 fixme-skipped**
 
-Tests tagged `[UI gap]` or containing the comment "defect marker" are **expected to fail** — they catalogue missing UI features. Do NOT skip them; they are the repair backlog.
+The stage_id bug (#2 below) was fixed in `app/routers/deals.py`. The 6 genuine UI gaps are
+marked `test.fixme` in `e2e/smoke.spec.ts` — they will be skipped (not failed) until implemented.
 
-| # | Failing test | Root cause |
-|---|-------------|------------|
-| 1 | Contacts CRUD › contact detail/edit UI [UI gap] | No per-contact detail/edit page in SPA |
-| 2 | Deals CRUD › create deal via modal — appears on kanban | **Bug:** `POST /deals` leaves `stage_id=null`; kanban filters by `stage_id` so card is invisible |
-| 3 | Deals CRUD › deal detail/edit UI [UI gap] | No per-deal detail page in SPA |
-| 4 | Accounts CRUD › edit account [UI gap] | No edit form/button in account detail view |
-| 5 | Activities CRUD › Activities nav tab [UI gap] | No Activities tab in SPA navigation |
-| 6 | Import › import UI trigger [UI gap] | No CSV import button/modal in SPA |
-| 7 | Export › export UI trigger [UI gap] | No CSV export button in SPA |
+| # | Status | Test | Note |
+|---|--------|------|------|
+| 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | No per-contact detail/edit page in SPA |
+| 2 | ✅ Fixed | Deals CRUD › create deal via modal — appears on kanban | `POST /deals` now sets `stage_id` to first pipeline stage |
+| 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | No per-deal detail page in SPA |
+| 4 | `test.fixme` | Accounts CRUD › edit account [UI gap] | No edit form/button in account detail view |
+| 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | No Activities tab in SPA navigation |
+| 6 | `test.fixme` | Import › import UI trigger [UI gap] | No CSV import button/modal in SPA |
+| 7 | `test.fixme` | Export › export UI trigger [UI gap] | No CSV export button in SPA |
 
 ## Repo layout
 
