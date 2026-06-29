@@ -37,7 +37,7 @@ bash scripts/verify.sh   # auto-handles ARM64 no-root workaround
 # or: make verify  (delegates to the same script)
 ```
 
-### E2E / Playwright smoke tests
+### E2E / Playwright tests
 
 ```bash
 # Install Playwright (one-time per environment)
@@ -60,19 +60,12 @@ npx playwright test --reporter=list
 #       the config uses E2E_PORT=8088 to avoid the conflict.
 ```
 
-**Smoke test results (verified 2026-06-29): 23 passed / 0 failed / 5 fixme-skipped**
+**E2E test results (verified 2026-06-29): 52 passed / 0 failed / 5 fixme-skipped** (57 total)
 
-**Full-coverage test results (verified 2026-06-29): 29 passed / 0 failed** (see below)
-
-The stage_id bug (#2 below) was fixed in `app/routers/deals.py`. The 6 `test.fixme` items in
-`e2e/smoke.spec.ts` remain as skipped defect markers for UI gaps NOT yet addressed in the smoke
-suite. The stale "assertion FAILS" prose comment was removed from smoke.spec.ts (stage_id is fixed).
-
-`e2e/full-coverage.spec.ts` now contains 29 tests (22 original + 5 interactive controls + 2 new):
-the original 22 + 5 added covering drag-and-drop, saved-view Apply, saved-view Clear, per-stage
-Add Deal shortcut, and Today reminder Dismiss; plus 2 new explicit assertions:
-- `Accounts CRUD › accounts - detail shows linked contacts section` (Linked Contacts heading + empty-state)
-- `Auth flow › logout button is visible and clickable from authenticated page` (visibility + enabled)
+The 5 `test.fixme` items remain as skipped defect markers for UI gaps:
+- `contacts.spec.ts`: contact detail/edit UI [UI gap], import UI trigger [UI gap], export UI trigger [UI gap]
+- `pipeline.spec.ts`: deal detail/edit UI [UI gap]
+- `activities.spec.ts`: Activities navigation tab [UI gap]
 
 > **ARM64 pipe gotcha** — `playwright.config.ts` uses `stdout: 'ignore', stderr: 'ignore'` for the
 > webServer. On ARM64 Linux the OS pipe buffer (~64 KB) fills after ~10 tests when set to `'pipe'`,
@@ -81,23 +74,13 @@ Add Deal shortcut, and Today reminder Dismiss; plus 2 new explicit assertions:
 
 | # | Status | Test | Note |
 |---|--------|------|------|
-| 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | Smoke skipped; covered by full-coverage.spec.ts 'contacts - detail' |
+| 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | In contacts.spec.ts; full CRUD covered by 'contacts - detail' |
 | 2 | ✅ Fixed | Deals CRUD › create deal via modal — appears on kanban | `POST /deals` now sets `stage_id` to first pipeline stage |
-| 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | Smoke skipped; covered by full-coverage.spec.ts 'deals - detail' |
+| 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | In pipeline.spec.ts; full CRUD covered by 'deals - detail' |
 | 4 | ✅ Stub | Accounts CRUD › edit account [stub Edit button visible] | Disabled Edit button added to account detail header; full form is a follow-up goal |
-| 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | ✅ Activities tab added to SPA; full-coverage.spec.ts covers it |
-| 6 | `test.fixme` | Import › import UI trigger [UI gap] | ✅ Import CSV button added; full-coverage.spec.ts covers it |
-| 7 | `test.fixme` | Export › export UI trigger [UI gap] | ✅ Export CSV button added; full-coverage.spec.ts covers it |
-
-**Full-coverage test results (verified 2026-06-29): 27 passed / 0 failed**
-
-`e2e/full-coverage.spec.ts` contains 27 tests covering route coverage, interactive controls,
-Contacts/Deals/Activities CRUD (5 tests each), Import/Export, Auth flows, and the new Extended
-Interactive Controls block. Run with:
-
-```bash
-npx playwright test e2e/full-coverage.spec.ts --reporter=list
-```
+| 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | ✅ Activities tab added to SPA; activities.spec.ts covers it |
+| 6 | `test.fixme` | Import › import UI trigger [UI gap] | ✅ Import CSV button added; contacts.spec.ts covers it |
+| 7 | `test.fixme` | Export › export UI trigger [UI gap] | ✅ Export CSV button added; contacts.spec.ts covers it |
 
 ## Repo layout
 
@@ -142,9 +125,13 @@ tests/
   conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override, seeded admin+token)
   test_*.py      — one file per concern
 e2e/
-  smoke.spec.ts       — Playwright headless smoke tests (23 pass, 5 fixme-skipped defect markers)
-  full-coverage.spec.ts — 22 named tests covering all clauses: route coverage, interactive
-                          controls, Contacts/Deals/Activities CRUD (5 each), Import/Export, Auth
+  auth.spec.ts        — Basic load, Auth (login/logout/guard), Route coverage, Auth flow (10 tests)
+  pipeline.spec.ts    — Pipeline nav, Deals CRUD smoke+FC, drag-and-drop, per-stage Add Deal (12 tests)
+  contacts.spec.ts    — Contacts nav, Contacts CRUD smoke+FC, Import/Export, saved-view Apply/Clear (19 tests)
+  accounts.spec.ts    — Accounts nav, Accounts CRUD smoke+FC (6 tests)
+  activities.spec.ts  — Activities CRUD smoke+FC (7 tests; 1 fixme: Activities nav [UI gap])
+  stats.spec.ts       — Stats nav (1 test)
+  today.spec.ts       — Today nav, reminder Dismiss (2 tests)
   tsconfig.json       — TypeScript config for e2e tests
   fixtures/
     contacts.csv — sample CSV for manual/automated import testing
@@ -306,7 +293,7 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 - Kanban loads stages dynamically from `GET /pipeline/stages`; drag-and-drop PATCHes `{ stage_id }`.
 - The same React bundle handles `/` and `/login.html`; login stores access/refresh tokens and current user in `localStorage`.
 
-### SPA repair log (covered by full-coverage.spec.ts)
+### SPA repair log (covered by per-feature spec files in e2e/)
 | File | Change | Test |
 |------|--------|------|
 | `frontend/src/App.tsx` | Added `activities` state + `Calendar` tab | 'activities - list', 'activities - create' |
