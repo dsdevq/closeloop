@@ -30,14 +30,6 @@ export function useAccounts(showToast: (msg: string) => void) {
     setAccounts((prev) => [...prev, account]);
   }
 
-  async function updateAccount(id: number, body: Partial<Account>) {
-    const res = await apiFetch(`/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
-    if (!res.ok) { showToast('Failed to update account'); return; }
-    const updated = await res.json();
-    setAccounts((prev) => prev.map((a) => (a.id === id ? updated : a)));
-    if (selectedAccount?.id === id) setSelectedAccount(updated);
-  }
-
   async function deleteAccount(id: number) {
     if (!window.confirm('Delete this account?')) return;
     const res = await apiFetch(`/accounts/${id}`, { method: 'DELETE' });
@@ -51,6 +43,6 @@ export function useAccounts(showToast: (msg: string) => void) {
     accounts,
     selectedAccountId, setSelectedAccountId,
     selectedAccount, setSelectedAccount,
-    loadAccounts, createAccount, updateAccount, deleteAccount,
+    loadAccounts, createAccount, deleteAccount,
   };
 }

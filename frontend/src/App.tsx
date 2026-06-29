@@ -6,6 +6,7 @@ import { DealDetailView } from './features/pipeline/DealDetailView';
 import { ContactsView } from './features/contacts/ContactsView';
 import { ContactDetailView } from './features/contacts/ContactDetailView';
 import { AccountsView } from './features/accounts/AccountsView';
+import { AccountDetailView } from './features/accounts/AccountDetailView';
 import { ActivitiesView } from './features/activities/ActivitiesView';
 import { ActivityDetailView } from './features/activities/ActivityDetailView';
 import { TodayView } from './features/today/TodayView';
@@ -106,17 +107,22 @@ export function App() {
           )
         )}
         {activeTab === 'accounts' && (
-          <AccountsView
-            account={selectedAccount}
-            accounts={accounts}
-            onBack={() => {
-              setSelectedAccountId(null);
-              setSelectedAccount(null);
-            }}
-            onDeleteAccount={deleteAccount}
-            onOpenAccount={(id) => setSelectedAccountId(id)}
-            onOpenModal={() => setModal('account')}
-          />
+          selectedAccount ? (
+            <AccountDetailView
+              account={selectedAccount}
+              onBack={() => {
+                setSelectedAccountId(null);
+                setSelectedAccount(null);
+              }}
+              onDelete={() => void deleteAccount(selectedAccount.id)}
+            />
+          ) : (
+            <AccountsView
+              accounts={accounts}
+              onOpenAccount={(id) => setSelectedAccountId(id)}
+              onOpenModal={() => setModal('account')}
+            />
+          )
         )}
         {activeTab === 'activities' && (
           selectedActivity ? (

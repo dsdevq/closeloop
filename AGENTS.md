@@ -126,7 +126,7 @@ frontend/
   src/features/
     pipeline/    — kanban board (PipelineView, DealCard, DealDetailView, DealModal, DealEditModal)
     contacts/    — contacts list + detail + CSV import/export (ContactsView, ContactDetailView, ContactModal, ContactEditModal, ImportModal)
-    accounts/    — accounts list and create (AccountsView, AccountModal)
+    accounts/    — accounts list + detail (AccountsView, AccountDetailView, AccountModal)
     activities/  — activities list + detail (ActivitiesView, ActivityDetailView, ActivityFormModal; ActivityFormModal owns `ACTIVITY_TYPES` const)
     today/       — reminders queue with dismiss (TodayView)
     stats/       — aggregate metrics dashboard (StatsView)
@@ -135,7 +135,7 @@ frontend/
     useAuth.ts      — token/user state, handleLogin, logout, login-redirect effect
     useDeals.ts     — deals state + CRUD (createDeal, updateDeal, deleteDeal, moveDeal, loadDeals)
     useContacts.ts  — contacts state + CRUD (createContact, updateContact, deleteContact, loadContacts, exportContacts)
-    useAccounts.ts  — accounts state + CRUD (createAccount, updateAccount, deleteAccount, loadAccounts); account-detail effect
+    useAccounts.ts  — accounts state + CRUD (createAccount, deleteAccount, loadAccounts); account-detail effect
     useActivities.ts— activities state + CRUD (createActivity, updateActivity, deleteActivity, loadActivities)
     useAppState.ts  — composition hook: calls the five above, owns remaining app-level state (activeTab, stages, today, savedViews, stats, modal, toast, loading) and orchestrates refreshCore + effects
   src/App.tsx    — React CRM app entry: hook call + render tree only (≤175 lines)
@@ -209,7 +209,7 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 - **`frontend/src/features/`** — one subdirectory per product area; each file exports one named export matching the filename; imports only from `../../types`, `../../lib/*`, and `../../components/ui/*`:
   - `pipeline/` — kanban board with drag-and-drop stage moves (`PipelineView`, `DealCard`, `DealDetailView`, `DealModal`, `DealEditModal`; `PipelineView` owns `stagePalette`)
   - `contacts/` — contacts list + detail + CSV import/export (`ContactsView`, `ContactDetailView`, `ContactModal`, `ContactEditModal`, `ImportModal`)
-  - `accounts/` — accounts list and create modal (`AccountsView`, `AccountModal`)
+  - `accounts/` — accounts list + detail + create modal (`AccountsView`, `AccountDetailView`, `AccountModal`)
   - `activities/` — activities list + detail (`ActivitiesView`, `ActivityDetailView`, `ActivityFormModal`; `ActivityFormModal` owns `ACTIVITY_TYPES` const)
   - `today/` — reminders queue with dismiss action (`TodayView`)
   - `stats/` — aggregate metrics dashboard (`StatsView`)
