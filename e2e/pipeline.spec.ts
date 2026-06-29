@@ -83,7 +83,7 @@ test.describe('Deals CRUD', () => {
     }
   });
 
-  test.fixme('deal detail/edit UI [UI gap — no per-deal detail page in SPA]', async ({ page, request }) => {
+  test('deal detail/edit UI', async ({ page, request }) => {
     await loginAndWait(page);
     const tok = await bearerToken(page);
 
@@ -92,8 +92,13 @@ test.describe('Deals CRUD', () => {
       headers: auth(tok),
     });
     const contact = await cRes.json();
+
+    const stagesRes = await request.get('/pipeline/stages', { headers: auth(tok) });
+    const stages: { id: number }[] = await stagesRes.json();
+    const stageId = stages[0]?.id;
+
     const dRes = await request.post('/deals', {
-      data: { title: 'Gap Test Deal', contact_id: contact.id, value: 100 },
+      data: { title: 'Gap Test Deal', contact_id: contact.id, value: 100, stage_id: stageId },
       headers: auth(tok),
     });
     const deal = await dRes.json();
@@ -103,8 +108,6 @@ test.describe('Deals CRUD', () => {
       await page.getByRole('button', { name: 'Pipeline' }).click();
       await expect(page.getByText('Gap Test Deal')).toBeVisible({ timeout: 8_000 });
 
-      // Clicking the deal card should open a detail view — no such UI exists.
-      // This test FAILS as a defect marker for the missing deal-detail page.
       await page.getByText('Gap Test Deal').first().click();
       await expect(page.getByRole('heading', { name: /Gap Test Deal/i })).toBeVisible({
         timeout: 3_000,

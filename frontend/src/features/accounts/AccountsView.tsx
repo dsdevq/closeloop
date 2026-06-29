@@ -30,7 +30,6 @@ export function AccountsView({
               <th className="px-4 py-3">Domain</th>
               <th className="px-4 py-3">Industry</th>
               <th className="px-4 py-3">Contacts</th>
-              <th className="px-4 py-3">Owner ID</th>
             </tr>
           </thead>
           <tbody>
@@ -48,12 +47,11 @@ export function AccountsView({
                 <td className="table-cell">{item.domain || ''}</td>
                 <td className="table-cell">{item.industry || ''}</td>
                 <td className="table-cell">{item.contact_count || 0}</td>
-                <td className="table-cell">{item.owner_id || ''}</td>
               </tr>
             ))}
             {accounts.length === 0 && (
               <tr>
-                <td className="px-4 py-10 text-center text-sm text-slate-500" colSpan={5}>
+                <td className="px-4 py-10 text-center text-sm text-slate-500" colSpan={4}>
                   No accounts yet.
                 </td>
               </tr>

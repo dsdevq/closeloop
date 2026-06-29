@@ -60,10 +60,9 @@ npx playwright test --reporter=list
 #       the config uses E2E_PORT=8088 to avoid the conflict.
 ```
 
-**E2E test results (verified 2026-06-29): 53 passed / 0 failed / 1 fixme-skipped** (54 total)
+**E2E test results (verified 2026-06-29): 54 passed / 0 failed / 0 fixme-skipped** (54 total)
 
-The 1 remaining `test.fixme` is a skipped defect marker for a genuine UI gap:
-- `pipeline.spec.ts`: deal detail/edit UI [UI gap]
+No remaining `test.fixme` blocks.
 
 > **ARM64 pipe gotcha** — `playwright.config.ts` uses `stdout: 'ignore', stderr: 'ignore'` for the
 > webServer. On ARM64 Linux the OS pipe buffer (~64 KB) fills after ~10 tests when set to `'pipe'`,
@@ -74,7 +73,7 @@ The 1 remaining `test.fixme` is a skipped defect marker for a genuine UI gap:
 |---|--------|------|------|
 | 1 | ✅ Converted | Contacts CRUD › contact name is clickable and opens detail view | Stale fixme converted — contact detail page exists; test now active and passing |
 | 2 | ✅ Fixed | Deals CRUD › create deal via modal — appears on kanban | `POST /deals` now sets `stage_id` to first pipeline stage |
-| 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | In pipeline.spec.ts; full CRUD covered by 'deals - detail' |
+| 3 | ✅ Converted | Deals CRUD › deal detail/edit UI | Stale fixme converted — DealDetailView.tsx exists; POST /deals now includes `stage_id` so deal renders in kanban column |
 | 4 | ✅ Stub | Accounts CRUD › edit account [stub Edit button visible] | Disabled Edit button added to account detail header; full form is a follow-up goal |
 | 5 | ✅ Removed | Activities CRUD › Activities nav tab | Stale fixme removed — Activities tab present in AppHeader.tsx; covered by 'activities - list' |
 | 6 | ✅ Removed | Import › import UI trigger | Stale fixme removed — Import CSV button present in ContactsView.tsx; covered by 'import - upload triggers feedback' |
@@ -145,8 +144,8 @@ tests/
 e2e/
   helpers.ts          — Shared exports: test fixture (_jsGuard), TEST_USER/TEST_PASS, login/loginAndWait/reloadDashboard/bearerToken/auth
   auth.spec.ts        — Basic load, Auth (login/logout/guard), Route coverage, Auth flow (10 tests)
-  pipeline.spec.ts    — Pipeline nav, Deals CRUD smoke+FC, drag-and-drop, per-stage Add Deal (11 tests + 1 fixme)
-  contacts.spec.ts    — Contacts nav, Contacts CRUD smoke+FC, Import/Export, saved-view Apply/Clear (16 tests + 1 fixme)
+  pipeline.spec.ts    — Pipeline nav, Deals CRUD smoke+FC, drag-and-drop, per-stage Add Deal (12 tests)
+  contacts.spec.ts    — Contacts nav, Contacts CRUD smoke+FC, Import/Export, saved-view Apply/Clear (17 tests)
   accounts.spec.ts    — Accounts nav, Accounts CRUD smoke+FC (6 tests)
   activities.spec.ts  — Activities CRUD smoke+FC (6 tests)
   stats.spec.ts       — Stats nav (1 test)
@@ -224,7 +223,7 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 One spec file per feature area:
 
 - `auth.spec.ts` — basic SPA load, login/logout/guard, route coverage (10 tests)
-- `pipeline.spec.ts` — Pipeline nav, Deals CRUD, drag-and-drop, per-stage Add Deal (11 tests + 1 fixme)
+- `pipeline.spec.ts` — Pipeline nav, Deals CRUD, drag-and-drop, per-stage Add Deal (12 tests, no fixme)
 - `contacts.spec.ts` — Contacts nav, Contacts CRUD, Import/Export, saved-view Apply/Clear (17 tests, no fixme)
 - `accounts.spec.ts` — Accounts nav, Accounts CRUD (6 tests)
 - `activities.spec.ts` — Activities CRUD (6 tests)
