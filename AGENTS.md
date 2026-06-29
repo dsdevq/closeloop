@@ -60,10 +60,9 @@ npx playwright test --reporter=list
 #       the config uses E2E_PORT=8088 to avoid the conflict.
 ```
 
-**E2E test results (verified 2026-06-29): 52 passed / 0 failed / 2 fixme-skipped** (54 total)
+**E2E test results (verified 2026-06-29): 53 passed / 0 failed / 1 fixme-skipped** (54 total)
 
-The 2 `test.fixme` items remain as skipped defect markers for genuine UI gaps:
-- `contacts.spec.ts`: contact detail/edit UI [UI gap]
+The 1 remaining `test.fixme` is a skipped defect marker for a genuine UI gap:
 - `pipeline.spec.ts`: deal detail/edit UI [UI gap]
 
 > **ARM64 pipe gotcha** — `playwright.config.ts` uses `stdout: 'ignore', stderr: 'ignore'` for the
@@ -73,7 +72,7 @@ The 2 `test.fixme` items remain as skipped defect markers for genuine UI gaps:
 
 | # | Status | Test | Note |
 |---|--------|------|------|
-| 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | In contacts.spec.ts; full CRUD covered by 'contacts - detail' |
+| 1 | ✅ Converted | Contacts CRUD › contact name is clickable and opens detail view | Stale fixme converted — contact detail page exists; test now active and passing |
 | 2 | ✅ Fixed | Deals CRUD › create deal via modal — appears on kanban | `POST /deals` now sets `stage_id` to first pipeline stage |
 | 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | In pipeline.spec.ts; full CRUD covered by 'deals - detail' |
 | 4 | ✅ Stub | Accounts CRUD › edit account [stub Edit button visible] | Disabled Edit button added to account detail header; full form is a follow-up goal |
@@ -226,7 +225,7 @@ One spec file per feature area:
 
 - `auth.spec.ts` — basic SPA load, login/logout/guard, route coverage (10 tests)
 - `pipeline.spec.ts` — Pipeline nav, Deals CRUD, drag-and-drop, per-stage Add Deal (11 tests + 1 fixme)
-- `contacts.spec.ts` — Contacts nav, Contacts CRUD, Import/Export, saved-view Apply/Clear (16 tests + 1 fixme)
+- `contacts.spec.ts` — Contacts nav, Contacts CRUD, Import/Export, saved-view Apply/Clear (17 tests, no fixme)
 - `accounts.spec.ts` — Accounts nav, Accounts CRUD (6 tests)
 - `activities.spec.ts` — Activities CRUD (6 tests)
 - `stats.spec.ts` — Stats nav (1 test)

@@ -79,7 +79,7 @@ test.describe('Contacts CRUD', () => {
     if (c) await request.delete(`/contacts/${c.id}`, { headers: auth(tok) });
   });
 
-  test.fixme('contact detail/edit UI [UI gap — no per-contact detail page exists in SPA]', async ({
+  test('contact name is clickable and opens detail view', async ({
     page,
     request,
   }) => {
@@ -96,13 +96,9 @@ test.describe('Contacts CRUD', () => {
       await page.getByRole('button', { name: 'Contacts' }).click();
       await expect(page.getByRole('cell', { name: 'Gap Test Contact' })).toBeVisible({ timeout: 8_000 });
 
-      // The contacts table has NO clickable link/button per row beyond the Account link.
-      // Attempting to navigate to a detail page will FAIL — defect marker.
-      const row = page.getByRole('row').filter({ hasText: 'Gap Test Contact' });
-      const clickable = row.getByRole('button').or(row.getByRole('link'));
-      await clickable.first().click({ timeout: 3_000 });
+      await page.getByRole('button', { name: 'Gap Test Contact' }).click();
       await expect(page.getByRole('heading', { name: /Gap Test Contact/i })).toBeVisible({
-        timeout: 3_000,
+        timeout: 5_000,
       });
     } finally {
       await request.delete(`/contacts/${contact.id}`, { headers: auth(tok) });
