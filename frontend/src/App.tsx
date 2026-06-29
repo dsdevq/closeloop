@@ -16,95 +16,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
-type Tab = 'pipeline' | 'contacts' | 'accounts' | 'today' | 'stats' | 'activities';
-
-type User = {
-  id?: number;
-  email?: string;
-  full_name?: string;
-  role?: string;
-};
-
-type PipelineStage = {
-  id: number;
-  name: string;
-  position: number;
-  probability: number;
-};
-
-type Deal = {
-  id: number;
-  title: string;
-  value?: number | null;
-  probability?: number | null;
-  stage_id?: number | null;
-  stage?: string | null;
-  contact_id?: number | null;
-  contact_name?: string | null;
-};
-
-type Contact = {
-  id: number;
-  name: string;
-  email?: string | null;
-  phone?: string | null;
-  company?: string | null;
-  lead_score?: number | null;
-  account_id?: number | null;
-};
-
-type Account = {
-  id: number;
-  name: string;
-  domain?: string | null;
-  industry?: string | null;
-  website?: string | null;
-  phone?: string | null;
-  address?: string | null;
-  owner_id?: number | null;
-  contact_count?: number | null;
-  contacts?: Contact[];
-};
-
-type Activity = {
-  id: number;
-  title: string;
-  type: string;
-  body?: string | null;
-  contact_id?: number | null;
-  deal_id?: number | null;
-  due_at?: string | null;
-  completed_at?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-type Reminder = {
-  id: number;
-  activity_title?: string | null;
-  activity_type?: string | null;
-  deal_title?: string | null;
-  contact_name?: string | null;
-  remind_at?: string | null;
-};
-
-type SavedView = {
-  id: number;
-  name: string;
-  entity_type: 'contacts' | 'deals';
-};
-
-type Stats = {
-  total_contacts: number;
-  total_deals: number;
-  total_activities: number;
-  pipeline_value: number;
-  weighted_forecast: number;
-  activities_last_30_days: number;
-  outbox_queued: number;
-  deals_by_stage?: Record<string, number>;
-};
+import type { Tab, User, Contact, Deal, Account, Activity, Reminder, PipelineStage, StatsData, SavedView } from './types';
 
 const stagePalette = [
   'border-l-blue-600',
@@ -174,7 +86,7 @@ export function App() {
   const [filteredDeals, setFilteredDeals] = useState<Deal[] | null>(null);
   const [filteredContacts, setFilteredContacts] = useState<Contact[] | null>(null);
   const [activeSavedView, setActiveSavedView] = useState<{ contacts?: string; deals?: string }>({});
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats, setStats] = useState<StatsData | null>(null);
   const [forecastTotal, setForecastTotal] = useState<number | null>(null);
   const [draggedDealId, setDraggedDealId] = useState<number | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
@@ -1419,7 +1331,7 @@ function TodayView({ reminders, onDismiss }: { reminders: Reminder[]; onDismiss:
   );
 }
 
-function StatsView({ stats }: { stats: Stats | null }) {
+function StatsView({ stats }: { stats: StatsData | null }) {
   const cards = stats
     ? [
         ['Total Contacts', numberText(stats.total_contacts)],
