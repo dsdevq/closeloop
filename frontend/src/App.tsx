@@ -10,7 +10,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Search,
   Trash2,
   Upload,
   UserRound,
@@ -19,6 +18,11 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import type { Tab, User, Contact, Deal, Account, Activity, Reminder, PipelineStage, StatsData, SavedView } from './types';
 import { apiFetch, getToken, storedUser } from './lib/api';
 import { money, numberText } from './lib/formatters';
+import { TextField } from './components/ui/TextField';
+import { ModalShell } from './components/ui/ModalShell';
+import { ModalActions } from './components/ui/ModalActions';
+import { SectionHeader } from './components/ui/SectionHeader';
+import { SavedViewsBar } from './components/ui/SavedViewsBar';
 
 const stagePalette = [
   'border-l-blue-600',
@@ -610,56 +614,6 @@ function LoginView({ onLogin }: { onLogin: (email: string, password: string) => 
           <div className="mt-4 text-center text-xs text-slate-400">v2.1 React</div>
         </form>
       </main>
-    </div>
-  );
-}
-
-function SectionHeader({
-  title,
-  action,
-}: {
-  title: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <h1 className="text-base font-bold text-slate-950">{title}</h1>
-      {action}
-    </div>
-  );
-}
-
-function SavedViewsBar({
-  views,
-  activeName,
-  onApply,
-  onClear,
-}: {
-  views: SavedView[];
-  activeName?: string;
-  onApply: (id: number, name: string) => void;
-  onClear: () => void;
-}) {
-  return (
-    <div className="panel mb-4 flex flex-wrap items-center gap-2 px-3 py-2">
-      <div className="flex items-center gap-2 pr-2 text-xs font-bold uppercase text-slate-500">
-        <Search size={14} aria-hidden="true" />
-        Saved Views
-      </div>
-      {views.length === 0 && <span className="text-sm text-slate-400">No saved views</span>}
-      {views.map((view) => (
-        <button key={view.id} className="secondary-button h-8 px-2.5 text-xs" onClick={() => onApply(view.id, view.name)} type="button">
-          {view.name}
-        </button>
-      ))}
-      {activeName && (
-        <>
-          <span className="ml-auto text-sm text-blue-700">Showing: {activeName}</span>
-          <button className="secondary-button h-8 px-2.5 text-xs" onClick={onClear} type="button">
-            Clear
-          </button>
-        </>
-      )}
     </div>
   );
 }
@@ -1336,17 +1290,6 @@ function StatsView({ stats }: { stats: StatsData | null }) {
   );
 }
 
-function ModalShell({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) {
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-        <h2 className="mb-4 text-base font-bold text-slate-950">{title}</h2>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 function DealModal({ contacts, onClose, onSubmit }: { contacts: Contact[]; onClose: () => void; onSubmit: (body: { title: string; contact_id: number; value: number }) => Promise<void> }) {
   const [title, setTitle] = useState('');
   const [contactId, setContactId] = useState('');
@@ -1667,36 +1610,3 @@ function ImportModal({
   );
 }
 
-function TextField({
-  label,
-  onChange,
-  required,
-  type = 'text',
-  value,
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  required?: boolean;
-  type?: string;
-  value: string;
-}) {
-  return (
-    <label className="block">
-      <span className="field-label">{label}</span>
-      <input className="field-input" value={value} onChange={(event) => onChange(event.target.value)} required={required} type={type} />
-    </label>
-  );
-}
-
-function ModalActions({ onClose, submitLabel }: { onClose: () => void; submitLabel: string }) {
-  return (
-    <div className="flex justify-end gap-2 pt-2">
-      <button className="secondary-button" onClick={onClose} type="button">
-        Cancel
-      </button>
-      <button className="primary-button" type="submit">
-        {submitLabel}
-      </button>
-    </div>
-  );
-}
