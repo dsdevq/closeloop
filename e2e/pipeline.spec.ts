@@ -146,7 +146,6 @@ test.describe('Deals CRUD', () => {
     }
   });
 
-  // TODO: implement per-deal detail/edit page in SPA
   test.fixme('deal detail/edit UI [UI gap — no per-deal detail page in SPA]', async ({ page, request }) => {
     await loginAndWait(page);
     const tok = await bearerToken(page);

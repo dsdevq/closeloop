@@ -142,7 +142,6 @@ test.describe('Contacts CRUD', () => {
     if (c) await request.delete(`/contacts/${c.id}`, { headers: auth(tok) });
   });
 
-  // TODO: implement per-contact detail/edit page in SPA
   test.fixme('contact detail/edit UI [UI gap — no per-contact detail page exists in SPA]', async ({
     page,
     request,
@@ -373,7 +372,6 @@ test.describe('Import', () => {
     }
   });
 
-  // TODO: add CSV import button/modal to Contacts view
   test.fixme('import UI trigger [UI gap — no import button in current SPA]', async ({ page }) => {
     await loginAndWait(page);
     // Expected to FAIL: the SPA has no import button/modal — defect marker
@@ -404,7 +402,6 @@ test.describe('Export', () => {
     expect(csv).toContain('id');
   });
 
-  // TODO: add CSV export button to Contacts view
   test.fixme('export UI trigger [UI gap — no export button in current SPA]', async ({ page }) => {
     await loginAndWait(page);
     // Expected to FAIL: the SPA has no export button — defect marker

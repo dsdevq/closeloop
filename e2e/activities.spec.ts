@@ -131,7 +131,6 @@ test.describe('Activities CRUD', () => {
     }
   });
 
-  // TODO: add Activities nav tab and list view to SPA
   test.fixme('Activities navigation tab [UI gap — no Activities tab in current SPA]', async ({ page }) => {
     await loginAndWait(page);
     // Expected to FAIL: the SPA has no Activities tab — defect marker
