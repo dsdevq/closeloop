@@ -576,6 +576,243 @@ test.describe('Import / Export', () => {
   });
 });
 
+// ── EXTENDED INTERACTIVE CONTROLS ────────────────────────────────────────────
+
+test.describe('Extended interactive controls', () => {
+  test('pipeline - per-stage add deal shortcut opens modal', async ({ page }) => {
+    await loginAndWait(page);
+    // Pipeline is the default tab; wait for per-stage "Add deal" buttons (one per stage column)
+    await expect(page.getByRole('button', { name: 'Add deal' }).first()).toBeVisible({ timeout: 8_000 });
+
+    // Click the first per-stage shortcut (footer button of the first stage column)
+    await page.getByRole('button', { name: 'Add deal' }).first().click();
+
+    // The shared New Deal modal must open
+    await expect(page.getByRole('heading', { name: 'New Deal' })).toBeVisible({ timeout: 5_000 });
+
+    // Dismiss cleanly
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('heading', { name: 'New Deal' })).not.toBeVisible({ timeout: 3_000 });
+  });
+
+  test('pipeline - drag deal card to different stage', async ({ page, request }) => {
+    await loginAndWait(page);
+    const tok = await bearerToken(page);
+
+    const stagesRes = await request.get('/pipeline/stages', { headers: auth(tok) });
+    const stages: { id: number; name: string }[] = await stagesRes.json();
+    expect(stages.length, 'Need at least 2 pipeline stages for drag-and-drop').toBeGreaterThanOrEqual(2);
+
+    const srcStage = stages[0];
+    const dstStage = stages[1];
+
+    const contactRes = await request.post('/contacts', {
+      data: { name: 'FC Drag Contact' },
+      headers: auth(tok),
+    });
+    const contact = await contactRes.json();
+
+    const dealRes = await request.post('/deals', {
+      data: { title: 'FC Drag Deal', contact_id: contact.id, value: 100, stage_id: srcStage.id },
+      headers: auth(tok),
+    });
+    expect(dealRes.ok()).toBeTruthy();
+    const deal = await dealRes.json();
+
+    try {
+      await reloadDashboard(page);
+
+      // Deal must appear in the source stage column before we drag it
+      await expect(page.getByText('FC Drag Deal')).toBeVisible({ timeout: 8_000 });
+
+      // Source: the DealCard element (rendered with draggable="true")
+      const dealCard = page.locator('[draggable="true"]').filter({ hasText: 'FC Drag Deal' });
+
+      // Destination: stage column index 1's drop zone.
+      // Kanban: .flex.gap-3.overflow-x-auto.pb-3 > div  →  one div per stage (in position order).
+      // Each stage column's drop zone is its second direct child <div>
+      // (first = header, second = drop zone, third = <button>Add deal</button>).
+      const kanban = page.locator('.flex.gap-3.overflow-x-auto.pb-3');
+      const dstColumn = kanban.locator('> div').nth(1);
+      const dstDropZone = dstColumn.locator('> div').nth(1);
+
+      const patchPromise = page.waitForResponse(
+        (resp) => resp.url().includes('/deals/') && resp.request().method() === 'PATCH',
+        { timeout: 10_000 },
+      );
+
+      await dealCard.dragTo(dstDropZone);
+      const patchResp = await patchPromise;
+      expect(patchResp.ok()).toBeTruthy();
+
+      // Confirm the stage_id was updated in the database
+      const verifyRes = await request.get(`/deals/${deal.id}`, { headers: auth(tok) });
+      const updated = await verifyRes.json();
+      expect(updated.stage_id).toBe(dstStage.id);
+    } finally {
+      await request.delete(`/deals/${deal.id}`, { headers: auth(tok) });
+      await request.delete(`/contacts/${contact.id}`, { headers: auth(tok) });
+    }
+  });
+
+  test('contacts - saved-view Apply filters the list', async ({ page, request }) => {
+    await loginAndWait(page);
+    const tok = await bearerToken(page);
+    const runTag = Date.now().toString(36).slice(-6);
+
+    const companyMatch = `FC-M-${runTag}`;
+    const matchName = `FC ViewApply Match ${runTag}`;
+    const noMatchName = `FC ViewApply NoMatch ${runTag}`;
+
+    const cMatchRes = await request.post('/contacts', {
+      data: { name: matchName, company: companyMatch },
+      headers: auth(tok),
+    });
+    const cMatch = await cMatchRes.json();
+
+    const cNoMatchRes = await request.post('/contacts', {
+      data: { name: noMatchName, company: `FC-X-${runTag}` },
+      headers: auth(tok),
+    });
+    const cNoMatch = await cNoMatchRes.json();
+
+    // Create a saved view that filters by exact company value
+    const viewRes = await request.post('/saved-views', {
+      data: {
+        name: `FC ViewApply ${runTag}`,
+        entity_type: 'contacts',
+        filter_expr: { op: 'eq', field: 'company', value: companyMatch },
+      },
+      headers: auth(tok),
+    });
+    const view = await viewRes.json();
+
+    try {
+      await reloadDashboard(page);
+      await page.getByRole('button', { name: 'Contacts' }).click();
+
+      // Both contacts visible before any view is applied
+      await expect(page.getByRole('button', { name: matchName })).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByRole('button', { name: noMatchName })).toBeVisible({ timeout: 5_000 });
+
+      // Apply the saved view by clicking its button in the SavedViewsBar
+      await page.getByRole('button', { name: `FC ViewApply ${runTag}` }).click();
+
+      // Only the matching contact is shown; non-matching contact is gone
+      await expect(page.getByRole('button', { name: matchName })).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByRole('button', { name: noMatchName })).not.toBeVisible({ timeout: 5_000 });
+
+      // Active view indicator is displayed
+      await expect(page.getByText(`Showing: FC ViewApply ${runTag}`)).toBeVisible();
+    } finally {
+      await request.delete(`/contacts/${cMatch.id}`, { headers: auth(tok) });
+      await request.delete(`/contacts/${cNoMatch.id}`, { headers: auth(tok) });
+      await request.delete(`/saved-views/${view.id}`, { headers: auth(tok) });
+    }
+  });
+
+  test('contacts - saved-view Clear resets the list', async ({ page, request }) => {
+    await loginAndWait(page);
+    const tok = await bearerToken(page);
+    const runTag = Date.now().toString(36).slice(-6);
+
+    const companyMatch = `FC-M-${runTag}`;
+    const matchName = `FC ViewClear Match ${runTag}`;
+    const noMatchName = `FC ViewClear NoMatch ${runTag}`;
+
+    const cMatchRes = await request.post('/contacts', {
+      data: { name: matchName, company: companyMatch },
+      headers: auth(tok),
+    });
+    const cMatch = await cMatchRes.json();
+
+    const cNoMatchRes = await request.post('/contacts', {
+      data: { name: noMatchName, company: `FC-X-${runTag}` },
+      headers: auth(tok),
+    });
+    const cNoMatch = await cNoMatchRes.json();
+
+    const viewRes = await request.post('/saved-views', {
+      data: {
+        name: `FC ViewClear ${runTag}`,
+        entity_type: 'contacts',
+        filter_expr: { op: 'eq', field: 'company', value: companyMatch },
+      },
+      headers: auth(tok),
+    });
+    const view = await viewRes.json();
+
+    try {
+      await reloadDashboard(page);
+      await page.getByRole('button', { name: 'Contacts' }).click();
+
+      // Apply the view first (prerequisites for testing Clear)
+      await page.getByRole('button', { name: `FC ViewClear ${runTag}` }).click();
+      await expect(page.getByRole('button', { name: matchName })).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByRole('button', { name: noMatchName })).not.toBeVisible({ timeout: 5_000 });
+
+      // Click Clear (exact match to avoid substring collisions with saved-view button names)
+      await page.getByRole('button', { name: 'Clear', exact: true }).click();
+
+      // Both contacts should be visible again (full unfiltered list restored)
+      await expect(page.getByRole('button', { name: matchName })).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByRole('button', { name: noMatchName })).toBeVisible({ timeout: 5_000 });
+
+      // Active view indicator is gone
+      await expect(page.getByText(`Showing: FC ViewClear ${runTag}`)).not.toBeVisible();
+    } finally {
+      await request.delete(`/contacts/${cMatch.id}`, { headers: auth(tok) });
+      await request.delete(`/contacts/${cNoMatch.id}`, { headers: auth(tok) });
+      await request.delete(`/saved-views/${view.id}`, { headers: auth(tok) });
+    }
+  });
+
+  test('today - dismiss reminder removes it from list', async ({ page, request }) => {
+    await loginAndWait(page);
+    const tok = await bearerToken(page);
+
+    // Create an activity to attach the reminder to
+    const activityRes = await request.post('/activities', {
+      data: { title: 'FC Today Dismiss Activity', type: 'call' },
+      headers: auth(tok),
+    });
+    expect(activityRes.ok()).toBeTruthy();
+    const activity = await activityRes.json();
+
+    // A past remind_at guarantees the reminder appears in GET /reminders/today
+    const reminderRes = await request.post('/reminders', {
+      data: { activity_id: activity.id, remind_at: '2020-01-01T00:00:00+00:00' },
+      headers: auth(tok),
+    });
+    expect(reminderRes.ok()).toBeTruthy();
+
+    try {
+      await reloadDashboard(page);
+      await page.getByRole('button', { name: 'Today' }).click();
+
+      // Reminder row appears with the activity title
+      await expect(page.getByText('FC Today Dismiss Activity')).toBeVisible({ timeout: 8_000 });
+
+      // Scope to the specific reminder row to avoid collisions with other reminders
+      const reminderRow = page.locator('.panel').filter({ hasText: 'FC Today Dismiss Activity' });
+
+      const dismissPromise = page.waitForResponse(
+        (resp) => resp.url().includes('/reminders/') && resp.url().includes('/dismiss'),
+        { timeout: 8_000 },
+      );
+      await reminderRow.getByRole('button', { name: 'Dismiss' }).click();
+      const dismissResp = await dismissPromise;
+      expect(dismissResp.ok()).toBeTruthy();
+
+      // Reminder is removed from the Today list
+      await expect(page.getByText('FC Today Dismiss Activity')).not.toBeVisible({ timeout: 5_000 });
+    } finally {
+      // Deleting the activity cascades to delete the reminder
+      await request.delete(`/activities/${activity.id}`, { headers: auth(tok) });
+    }
+  });
+});
+
 // ── AUTH FLOW ─────────────────────────────────────────────────────────────────
 
 test.describe('Auth flow', () => {
