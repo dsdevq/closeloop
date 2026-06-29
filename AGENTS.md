@@ -62,15 +62,17 @@ npx playwright test --reporter=list
 
 **Smoke test results (verified 2026-06-29): 23 passed / 0 failed / 5 fixme-skipped**
 
-**Full-coverage test results (verified 2026-06-29): 27 passed / 0 failed** (see below)
+**Full-coverage test results (verified 2026-06-29): 29 passed / 0 failed** (see below)
 
 The stage_id bug (#2 below) was fixed in `app/routers/deals.py`. The 6 `test.fixme` items in
 `e2e/smoke.spec.ts` remain as skipped defect markers for UI gaps NOT yet addressed in the smoke
 suite. The stale "assertion FAILS" prose comment was removed from smoke.spec.ts (stage_id is fixed).
 
-`e2e/full-coverage.spec.ts` now contains 27 tests (22 original + 5 new interactive controls):
+`e2e/full-coverage.spec.ts` now contains 29 tests (22 original + 5 interactive controls + 2 new):
 the original 22 + 5 added covering drag-and-drop, saved-view Apply, saved-view Clear, per-stage
-Add Deal shortcut, and Today reminder Dismiss.
+Add Deal shortcut, and Today reminder Dismiss; plus 2 new explicit assertions:
+- `Accounts CRUD › accounts - detail shows linked contacts section` (Linked Contacts heading + empty-state)
+- `Auth flow › logout button is visible and clickable from authenticated page` (visibility + enabled)
 
 > **ARM64 pipe gotcha** — `playwright.config.ts` uses `stdout: 'ignore', stderr: 'ignore'` for the
 > webServer. On ARM64 Linux the OS pipe buffer (~64 KB) fills after ~10 tests when set to `'pipe'`,
