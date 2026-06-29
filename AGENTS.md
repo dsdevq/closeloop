@@ -115,10 +115,24 @@ app/
     login.html   — generated React SPA entry copy served at `/login.html`
     assets/      — generated Vite JS/CSS bundles
 frontend/
-  src/App.tsx    — React CRM app entry: hook call + render tree only (≤175 lines)
+  src/types.ts   — all shared TypeScript domain types (User, Contact, Deal, Account, Activity, SavedView, Reminder, PipelineStage, Tag, …)
+  src/lib/
+    api.ts       — apiFetch (auth-aware fetch; 401 clears tokens → /login.html), getToken, storedUser
+    formatters.ts— money, numberText display formatters (no React/DOM dependency)
+  src/components/
+    AppHeader.tsx— sticky nav header (tab switcher + user info + logout)
+    AppModals.tsx— all modal rendering (deal/contact/account/activity/import)
+    ui/          — shared presentational primitives (TextField, ModalShell, ModalActions, SectionHeader, SavedViewsBar)
+  src/features/
+    pipeline/    — kanban board (PipelineView, DealCard, DealDetailView, DealModal, DealEditModal)
+    contacts/    — contacts list + detail + CSV import/export (ContactsView, ContactDetailView, ContactModal, ContactEditModal, ImportModal)
+    accounts/    — accounts list and create (AccountsView, AccountModal)
+    activities/  — activities list + detail (ActivitiesView, ActivityDetailView, ActivityModal)
+    today/       — reminders queue with dismiss (TodayView)
+    stats/       — aggregate metrics dashboard (StatsView)
+    auth/        — login form (LoginView)
   src/hooks/useAppState.ts — all useState, useCallback, useEffect, and async CRUD actions
-  src/components/AppHeader.tsx — sticky nav header (tab switcher + user info + logout)
-  src/components/AppModals.tsx — all modal rendering (deal/contact/account/activity/import)
+  src/App.tsx    — React CRM app entry: hook call + render tree only (≤175 lines)
   src/styles.css — Tailwind base/components/utilities
   vite.config.ts — builds into `app/static/`; dev proxy targets FastAPI on :8000
 tests/
@@ -169,15 +183,46 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 - Never mock the database — always use the in-memory SQLite via the `client` fixture
 
 ### Frontend
+
 - Source of truth is `frontend/src`, not generated files under `app/static`.
 - Run `npm --prefix frontend run typecheck`, `npm --prefix frontend run lint`, and `npm --prefix frontend run build` before frontend PRs.
 - The build script copies `app/static/index.html` to `app/static/login.html` so FastAPI serves the same React auth-aware SPA at both routes.
 - Use typed React state and normal JSX escaping. Avoid `dangerouslySetInnerHTML` for user-supplied data.
-- API calls should go through the shared `apiFetch()` helper so 401 responses consistently clear tokens and route to `/login.html`.
-- `apiFetch`, `getToken`, and `storedUser` live in `frontend/src/lib/api.ts` (imports `User` from `../types`). Display formatters `money` and `numberText` live in `frontend/src/lib/formatters.ts` (no React/DOM dependency). Import these from `./lib/api` and `./lib/formatters` in `App.tsx`.
-- Shared presentational primitives (TextField, ModalShell, ModalActions, SectionHeader, SavedViewsBar) live in `frontend/src/components/ui/` — each file exports a single named export matching the filename. `SavedViewsBar` imports `SavedView` from `../../types` and `Search` from `lucide-react`; it receives data/callbacks as props (no internal `apiFetch` call).
-- Feature-scoped components live under `frontend/src/features/<feature>/` — each file exports one named export matching the filename. Pipeline components (PipelineView, DealCard, DealDetailView, DealModal, DealEditModal) live in `frontend/src/features/pipeline/`. Contacts components (ContactsView, ContactDetailView, ContactModal, ContactEditModal, ImportModal) live in `frontend/src/features/contacts/`. Accounts components (AccountsView, AccountModal) live in `frontend/src/features/accounts/`. Activities components (ActivitiesView, ActivityDetailView, ActivityModal) live in `frontend/src/features/activities/`. Today component (TodayView) lives in `frontend/src/features/today/`. Stats component (StatsView) lives in `frontend/src/features/stats/`. Auth component (LoginView) lives in `frontend/src/features/auth/`. Each imports only what it needs: types from `../../types`, helpers from `../../lib/*`, UI primitives from `../../components/ui/*`. `PipelineView` owns `stagePalette` and imports `DealCard` from `./DealCard`. `ActivityModal` owns the `ACTIVITY_TYPES` const. `LoginView` has no hardcoded credential defaults — inputs start empty.
-- App-level components live in `frontend/src/components/` (not `ui/`): `AppHeader` (nav bar), `AppModals` (all modal rendering). App state and all async CRUD actions live in `frontend/src/hooks/useAppState.ts` — the only custom hook. `App.tsx` only calls this hook, then renders the layout tree.
+
+#### Key files and directories
+
+- **`frontend/src/types.ts`** — all shared TypeScript domain types (`User`, `Contact`, `Deal`, `Account`, `Activity`, `SavedView`, `Reminder`, `PipelineStage`, `Tag`, …). Every feature module imports types from here; no type definitions live in component files.
+- **`frontend/src/lib/api.ts`** — `apiFetch` (auth-aware fetch; 401 clears tokens → `/login.html`), `getToken`, `storedUser`. All API calls go through `apiFetch` so auth errors are handled consistently across features.
+- **`frontend/src/lib/formatters.ts`** — `money` and `numberText` display formatters. No React or DOM dependency; safe to call in any context.
+- **`frontend/src/components/ui/`** — shared presentational primitives; each file exports one named export matching the filename:
+  - `TextField` — labelled text input
+  - `ModalShell` — modal overlay and card wrapper
+  - `ModalActions` — modal footer button row (Cancel / primary action)
+  - `SectionHeader` — page section title bar with optional action button
+  - `SavedViewsBar` — saved-view chips + apply/clear controls; imports `SavedView` from `../../types`, no internal `apiFetch` call
+- **`frontend/src/features/`** — one subdirectory per product area; each file exports one named export matching the filename; imports only from `../../types`, `../../lib/*`, and `../../components/ui/*`:
+  - `pipeline/` — kanban board with drag-and-drop stage moves (`PipelineView`, `DealCard`, `DealDetailView`, `DealModal`, `DealEditModal`; `PipelineView` owns `stagePalette`)
+  - `contacts/` — contacts list + detail + CSV import/export (`ContactsView`, `ContactDetailView`, `ContactModal`, `ContactEditModal`, `ImportModal`)
+  - `accounts/` — accounts list and create modal (`AccountsView`, `AccountModal`)
+  - `activities/` — activities list + detail (`ActivitiesView`, `ActivityDetailView`, `ActivityModal`; `ActivityModal` owns `ACTIVITY_TYPES` const)
+  - `today/` — reminders queue with dismiss action (`TodayView`)
+  - `stats/` — aggregate metrics dashboard (`StatsView`)
+  - `auth/` — login form with no hardcoded credential defaults (`LoginView`)
+- **`frontend/src/components/AppHeader.tsx`** — sticky nav bar (tab switcher + user info + logout); app-level, not a UI primitive.
+- **`frontend/src/components/AppModals.tsx`** — renders all modals; driven by state from `useAppState`.
+- **`frontend/src/hooks/useAppState.ts`** — the only custom hook; owns all `useState`, `useCallback`, `useEffect`, and async CRUD actions. `App.tsx` calls this hook then renders the layout tree.
+
+#### E2E spec layout (`e2e/`)
+
+One spec file per feature area; each is self-contained with its own setup/teardown:
+
+- `auth.spec.ts` — basic SPA load, login/logout/guard, route coverage (10 tests)
+- `pipeline.spec.ts` — Pipeline nav, Deals CRUD, drag-and-drop, per-stage Add Deal (12 tests)
+- `contacts.spec.ts` — Contacts nav, Contacts CRUD, Import/Export, saved-view Apply/Clear (19 tests)
+- `accounts.spec.ts` — Accounts nav, Accounts CRUD (6 tests)
+- `activities.spec.ts` — Activities CRUD (7 tests; 1 fixme: Activities nav [UI gap])
+- `stats.spec.ts` — Stats nav (1 test)
+- `today.spec.ts` — Today nav, reminder Dismiss (2 tests)
 
 ## Auth layer (v1)
 
