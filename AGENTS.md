@@ -37,7 +37,7 @@ bash scripts/verify.sh   # auto-handles ARM64 no-root workaround
 # or: make verify  (delegates to the same script)
 ```
 
-### E2E / Playwright smoke tests
+### E2E / Playwright tests
 
 ```bash
 # Install Playwright (one-time per environment)
@@ -60,19 +60,12 @@ npx playwright test --reporter=list
 #       the config uses E2E_PORT=8088 to avoid the conflict.
 ```
 
-**Smoke test results (verified 2026-06-29): 23 passed / 0 failed / 5 fixme-skipped**
+**E2E test results (verified 2026-06-29): 52 passed / 0 failed / 5 fixme-skipped** (57 total)
 
-**Full-coverage test results (verified 2026-06-29): 29 passed / 0 failed** (see below)
-
-The stage_id bug (#2 below) was fixed in `app/routers/deals.py`. The 6 `test.fixme` items in
-`e2e/smoke.spec.ts` remain as skipped defect markers for UI gaps NOT yet addressed in the smoke
-suite. The stale "assertion FAILS" prose comment was removed from smoke.spec.ts (stage_id is fixed).
-
-`e2e/full-coverage.spec.ts` now contains 29 tests (22 original + 5 interactive controls + 2 new):
-the original 22 + 5 added covering drag-and-drop, saved-view Apply, saved-view Clear, per-stage
-Add Deal shortcut, and Today reminder Dismiss; plus 2 new explicit assertions:
-- `Accounts CRUD › accounts - detail shows linked contacts section` (Linked Contacts heading + empty-state)
-- `Auth flow › logout button is visible and clickable from authenticated page` (visibility + enabled)
+The 5 `test.fixme` items remain as skipped defect markers for UI gaps:
+- `contacts.spec.ts`: contact detail/edit UI [UI gap], import UI trigger [UI gap], export UI trigger [UI gap]
+- `pipeline.spec.ts`: deal detail/edit UI [UI gap]
+- `activities.spec.ts`: Activities navigation tab [UI gap]
 
 > **ARM64 pipe gotcha** — `playwright.config.ts` uses `stdout: 'ignore', stderr: 'ignore'` for the
 > webServer. On ARM64 Linux the OS pipe buffer (~64 KB) fills after ~10 tests when set to `'pipe'`,
@@ -81,23 +74,13 @@ Add Deal shortcut, and Today reminder Dismiss; plus 2 new explicit assertions:
 
 | # | Status | Test | Note |
 |---|--------|------|------|
-| 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | Smoke skipped; covered by full-coverage.spec.ts 'contacts - detail' |
+| 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | In contacts.spec.ts; full CRUD covered by 'contacts - detail' |
 | 2 | ✅ Fixed | Deals CRUD › create deal via modal — appears on kanban | `POST /deals` now sets `stage_id` to first pipeline stage |
-| 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | Smoke skipped; covered by full-coverage.spec.ts 'deals - detail' |
+| 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | In pipeline.spec.ts; full CRUD covered by 'deals - detail' |
 | 4 | ✅ Stub | Accounts CRUD › edit account [stub Edit button visible] | Disabled Edit button added to account detail header; full form is a follow-up goal |
-| 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | ✅ Activities tab added to SPA; full-coverage.spec.ts covers it |
-| 6 | `test.fixme` | Import › import UI trigger [UI gap] | ✅ Import CSV button added; full-coverage.spec.ts covers it |
-| 7 | `test.fixme` | Export › export UI trigger [UI gap] | ✅ Export CSV button added; full-coverage.spec.ts covers it |
-
-**Full-coverage test results (verified 2026-06-29): 27 passed / 0 failed**
-
-`e2e/full-coverage.spec.ts` contains 27 tests covering route coverage, interactive controls,
-Contacts/Deals/Activities CRUD (5 tests each), Import/Export, Auth flows, and the new Extended
-Interactive Controls block. Run with:
-
-```bash
-npx playwright test e2e/full-coverage.spec.ts --reporter=list
-```
+| 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | ✅ Activities tab added to SPA; activities.spec.ts covers it |
+| 6 | `test.fixme` | Import › import UI trigger [UI gap] | ✅ Import CSV button added; contacts.spec.ts covers it |
+| 7 | `test.fixme` | Export › export UI trigger [UI gap] | ✅ Export CSV button added; contacts.spec.ts covers it |
 
 ## Repo layout
 
@@ -132,16 +115,43 @@ app/
     login.html   — generated React SPA entry copy served at `/login.html`
     assets/      — generated Vite JS/CSS bundles
 frontend/
-  src/App.tsx    — React CRM app: auth, Pipeline, Contacts, Accounts, Today, Stats
+  src/types.ts   — all shared TypeScript domain types (User, Contact, Deal, Account, Activity, SavedView, Reminder, PipelineStage, Tag, …)
+  src/lib/
+    api.ts       — apiFetch (auth-aware fetch; 401 clears tokens → /login.html), getToken, storedUser
+    formatters.ts— money, numberText display formatters (no React/DOM dependency)
+  src/components/
+    AppHeader.tsx— sticky nav header (tab switcher + user info + logout)
+    AppModals.tsx— all modal rendering (deal/contact/account/activity/import)
+    ui/          — shared presentational primitives (TextField, ModalShell, ModalActions, SectionHeader, SavedViewsBar)
+  src/features/
+    pipeline/    — kanban board (PipelineView, DealCard, DealDetailView, DealModal, DealEditModal)
+    contacts/    — contacts list + detail + CSV import/export (ContactsView, ContactDetailView, ContactModal, ContactEditModal, ImportModal)
+    accounts/    — accounts list + detail (AccountsView, AccountDetailView, AccountModal)
+    activities/  — activities list + detail (ActivitiesView, ActivityDetailView, ActivityFormModal; ActivityFormModal owns `ACTIVITY_TYPES` const)
+    today/       — reminders queue with dismiss (TodayView)
+    stats/       — aggregate metrics dashboard (StatsView)
+    auth/        — login form (LoginView)
+  src/hooks/
+    useAuth.ts      — token/user state, handleLogin, logout, login-redirect effect
+    useDeals.ts     — deals state + CRUD (createDeal, updateDeal, deleteDeal, moveDeal, loadDeals)
+    useContacts.ts  — contacts state + CRUD (createContact, updateContact, deleteContact, loadContacts, exportContacts)
+    useAccounts.ts  — accounts state + CRUD (createAccount, deleteAccount, loadAccounts); account-detail effect
+    useActivities.ts— activities state + CRUD (createActivity, updateActivity, deleteActivity, loadActivities)
+    useAppState.ts  — composition hook: calls the five above, owns remaining app-level state (activeTab, stages, today, savedViews, stats, modal, toast, loading) and orchestrates refreshCore + effects
+  src/App.tsx    — React CRM app entry: hook call + render tree only (≤175 lines)
   src/styles.css — Tailwind base/components/utilities
   vite.config.ts — builds into `app/static/`; dev proxy targets FastAPI on :8000
 tests/
   conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override, seeded admin+token)
   test_*.py      — one file per concern
 e2e/
-  smoke.spec.ts       — Playwright headless smoke tests (23 pass, 5 fixme-skipped defect markers)
-  full-coverage.spec.ts — 22 named tests covering all clauses: route coverage, interactive
-                          controls, Contacts/Deals/Activities CRUD (5 each), Import/Export, Auth
+  auth.spec.ts        — Basic load, Auth (login/logout/guard), Route coverage, Auth flow (10 tests)
+  pipeline.spec.ts    — Pipeline nav, Deals CRUD smoke+FC, drag-and-drop, per-stage Add Deal (12 tests)
+  contacts.spec.ts    — Contacts nav, Contacts CRUD smoke+FC, Import/Export, saved-view Apply/Clear (19 tests)
+  accounts.spec.ts    — Accounts nav, Accounts CRUD smoke+FC (6 tests)
+  activities.spec.ts  — Activities CRUD smoke+FC (7 tests; 1 fixme: Activities nav [UI gap])
+  stats.spec.ts       — Stats nav (1 test)
+  today.spec.ts       — Today nav, reminder Dismiss (2 tests)
   tsconfig.json       — TypeScript config for e2e tests
   fixtures/
     contacts.csv — sample CSV for manual/automated import testing
@@ -179,11 +189,46 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 - Never mock the database — always use the in-memory SQLite via the `client` fixture
 
 ### Frontend
+
 - Source of truth is `frontend/src`, not generated files under `app/static`.
 - Run `npm --prefix frontend run typecheck`, `npm --prefix frontend run lint`, and `npm --prefix frontend run build` before frontend PRs.
 - The build script copies `app/static/index.html` to `app/static/login.html` so FastAPI serves the same React auth-aware SPA at both routes.
 - Use typed React state and normal JSX escaping. Avoid `dangerouslySetInnerHTML` for user-supplied data.
-- API calls should go through the shared `apiFetch()` helper so 401 responses consistently clear tokens and route to `/login.html`.
+
+#### Key files and directories
+
+- **`frontend/src/types.ts`** — all shared TypeScript domain types (`User`, `Contact`, `Deal`, `Account`, `Activity`, `SavedView`, `Reminder`, `PipelineStage`, `Tag`, …). Every feature module imports types from here; no type definitions live in component files.
+- **`frontend/src/lib/api.ts`** — `apiFetch` (auth-aware fetch; 401 clears tokens → `/login.html`), `getToken`, `storedUser`. All API calls go through `apiFetch` so auth errors are handled consistently across features.
+- **`frontend/src/lib/formatters.ts`** — `money` and `numberText` display formatters. No React or DOM dependency; safe to call in any context.
+- **`frontend/src/components/ui/`** — shared presentational primitives; each file exports one named export matching the filename:
+  - `TextField` — labelled text input
+  - `ModalShell` — modal overlay and card wrapper
+  - `ModalActions` — modal footer button row (Cancel / primary action)
+  - `SectionHeader` — page section title bar with optional action button
+  - `SavedViewsBar` — saved-view chips + apply/clear controls; imports `SavedView` from `../../types`, no internal `apiFetch` call
+- **`frontend/src/features/`** — one subdirectory per product area; each file exports one named export matching the filename; imports only from `../../types`, `../../lib/*`, and `../../components/ui/*`:
+  - `pipeline/` — kanban board with drag-and-drop stage moves (`PipelineView`, `DealCard`, `DealDetailView`, `DealModal`, `DealEditModal`; `PipelineView` owns `stagePalette`)
+  - `contacts/` — contacts list + detail + CSV import/export (`ContactsView`, `ContactDetailView`, `ContactModal`, `ContactEditModal`, `ImportModal`)
+  - `accounts/` — accounts list + detail + create modal (`AccountsView`, `AccountDetailView`, `AccountModal`)
+  - `activities/` — activities list + detail (`ActivitiesView`, `ActivityDetailView`, `ActivityFormModal`; `ActivityFormModal` owns `ACTIVITY_TYPES` const)
+  - `today/` — reminders queue with dismiss action (`TodayView`)
+  - `stats/` — aggregate metrics dashboard (`StatsView`)
+  - `auth/` — login form with no hardcoded credential defaults (`LoginView`)
+- **`frontend/src/components/AppHeader.tsx`** — sticky nav bar (tab switcher + user info + logout); app-level, not a UI primitive.
+- **`frontend/src/components/AppModals.tsx`** — renders all modals; driven by state from `useAppState`.
+- **`frontend/src/hooks/useAppState.ts`** — the only custom hook; owns all `useState`, `useCallback`, `useEffect`, and async CRUD actions. `App.tsx` calls this hook then renders the layout tree.
+
+#### E2E spec layout (`e2e/`)
+
+One spec file per feature area; each is self-contained with its own setup/teardown:
+
+- `auth.spec.ts` — basic SPA load, login/logout/guard, route coverage (10 tests)
+- `pipeline.spec.ts` — Pipeline nav, Deals CRUD, drag-and-drop, per-stage Add Deal (12 tests)
+- `contacts.spec.ts` — Contacts nav, Contacts CRUD, Import/Export, saved-view Apply/Clear (19 tests)
+- `accounts.spec.ts` — Accounts nav, Accounts CRUD (6 tests)
+- `activities.spec.ts` — Activities CRUD (7 tests; 1 fixme: Activities nav [UI gap])
+- `stats.spec.ts` — Stats nav (1 test)
+- `today.spec.ts` — Today nav, reminder Dismiss (2 tests)
 
 ## Auth layer (v1)
 
@@ -299,12 +344,12 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 - Kanban loads stages dynamically from `GET /pipeline/stages`; drag-and-drop PATCHes `{ stage_id }`.
 - The same React bundle handles `/` and `/login.html`; login stores access/refresh tokens and current user in `localStorage`.
 
-### SPA repair log (covered by full-coverage.spec.ts)
+### SPA repair log (covered by per-feature spec files in e2e/)
 | File | Change | Test |
 |------|--------|------|
 | `frontend/src/App.tsx` | Added `activities` state + `Calendar` tab | 'activities - list', 'activities - create' |
 | `frontend/src/App.tsx` | `ActivitiesView` + `ActivityDetailView` components | 'activities - detail', 'activities - update', 'activities - delete' |
-| `frontend/src/App.tsx` | `ActivityModal` (create + edit) | 'activities - create', 'activities - update' |
+| `frontend/src/App.tsx` | `ActivityFormModal` (create + edit) | 'activities - create', 'activities - update' |
 | `frontend/src/App.tsx` | Contact name → clickable button, `ContactDetailView` | 'contacts - detail', 'contacts - update', 'contacts - delete' |
 | `frontend/src/App.tsx` | `ContactEditModal` (PATCH /contacts/:id) | 'contacts - update' |
 | `frontend/src/App.tsx` | `DealCard` onClick → `DealDetailView` | 'deals - detail', 'deals - update', 'deals - delete' |
