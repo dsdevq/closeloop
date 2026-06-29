@@ -214,7 +214,7 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
   - `auth/` — login form with no hardcoded credential defaults (`LoginView`)
 - **`frontend/src/components/AppHeader.tsx`** — sticky nav bar (tab switcher + user info + logout); app-level, not a UI primitive.
 - **`frontend/src/components/AppModals.tsx`** — renders all modals; driven by state from `useAppState`.
-- **`frontend/src/hooks/useAppState.ts`** — the only custom hook; owns all `useState`, `useCallback`, `useEffect`, and async CRUD actions. `App.tsx` calls this hook then renders the layout tree.
+- **`frontend/src/hooks/useAppState.ts`** — composition hook: calls the five domain hooks (useAuth, useDeals, useContacts, useAccounts, useActivities); owns remaining app-level state (stages, today, savedViews, stats, modal, toast) only. `App.tsx` calls this hook then renders the layout tree.
 
 #### E2E spec layout (`e2e/`)
 
