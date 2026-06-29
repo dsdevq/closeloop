@@ -23,17 +23,10 @@ import { ModalShell } from './components/ui/ModalShell';
 import { ModalActions } from './components/ui/ModalActions';
 import { SectionHeader } from './components/ui/SectionHeader';
 import { SavedViewsBar } from './components/ui/SavedViewsBar';
-
-const stagePalette = [
-  'border-l-blue-600',
-  'border-l-cyan-600',
-  'border-l-amber-500',
-  'border-l-orange-500',
-  'border-l-emerald-600',
-  'border-l-red-600',
-  'border-l-violet-600',
-  'border-l-pink-600',
-];
+import { PipelineView } from './features/pipeline/PipelineView';
+import { DealDetailView } from './features/pipeline/DealDetailView';
+import { DealModal } from './features/pipeline/DealModal';
+import { DealEditModal } from './features/pipeline/DealEditModal';
 
 function isLoginPath() {
   return window.location.pathname.endsWith('/login.html');
@@ -252,7 +245,6 @@ export function App() {
                 setFilteredDeals(null);
                 setActiveSavedView((prev) => ({ ...prev, deals: undefined }));
               }}
-              onCreateDeal={(body) => createDeal(body)}
               onMoveDeal={(dealId, stageId) => moveDeal(dealId, stageId)}
               onOpenModal={() => setModal('deal')}
               onOpenDeal={(d) => setSelectedDeal(d)}
@@ -615,189 +607,6 @@ function LoginView({ onLogin }: { onLogin: (email: string, password: string) => 
         </form>
       </main>
     </div>
-  );
-}
-
-function PipelineView({
-  activeSavedView,
-  contacts,
-  deals,
-  draggedDealId,
-  forecastTotal,
-  loading,
-  onApplySavedView,
-  onClearSavedView,
-  onMoveDeal,
-  onOpenModal,
-  onOpenDeal,
-  savedViews,
-  setDraggedDealId,
-  stages,
-}: {
-  activeSavedView?: string;
-  contacts: Contact[];
-  deals: Deal[];
-  draggedDealId: number | null;
-  forecastTotal: number | null;
-  loading: boolean;
-  onApplySavedView: (id: number, name: string) => void;
-  onClearSavedView: () => void;
-  onCreateDeal: (body: { title: string; contact_id: number; value: number }) => Promise<void>;
-  onMoveDeal: (dealId: number, stageId: number) => void;
-  onOpenModal: () => void;
-  onOpenDeal: (deal: Deal) => void;
-  savedViews: SavedView[];
-  setDraggedDealId: (id: number | null) => void;
-  stages: PipelineStage[];
-}) {
-  const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
-
-  return (
-    <>
-      <SectionHeader
-        title="Pipeline"
-        action={
-          <button className="primary-button" onClick={onOpenModal} type="button">
-            <Plus size={16} aria-hidden="true" />
-            New Deal
-          </button>
-        }
-      />
-      <SavedViewsBar views={savedViews} activeName={activeSavedView} onApply={onApplySavedView} onClear={onClearSavedView} />
-
-      <div className="flex gap-3 overflow-x-auto pb-3">
-        {stages.length === 0 && <div className="panel w-full p-8 text-center text-sm text-slate-500">{loading ? 'Loading pipeline' : 'No pipeline stages configured.'}</div>}
-        {stages.map((stage, index) => {
-          const stageDeals = deals.filter((deal) => deal.stage_id === stage.id);
-          return (
-            <div key={stage.id} className={`flex min-h-[520px] min-w-64 flex-1 flex-col rounded-lg border border-slate-200 border-l-4 bg-slate-100 p-3 ${stagePalette[index % stagePalette.length]}`}>
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div>
-                  <div className="text-xs font-bold uppercase text-slate-600">{stage.name}</div>
-                  <div className="text-xs text-slate-500">{stage.probability}% probability</div>
-                </div>
-                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-bold text-slate-600">{stageDeals.length}</span>
-              </div>
-              <div
-                className={`flex flex-1 flex-col gap-2 rounded-md ${draggedDealId ? 'ring-1 ring-dashed ring-slate-300' : ''}`}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  if (draggedDealId) onMoveDeal(draggedDealId, stage.id);
-                  setDraggedDealId(null);
-                }}
-              >
-                {stageDeals.map((deal) => (
-                  <DealCard key={deal.id} contact={deal.contact_id ? contactById.get(deal.contact_id) : undefined} deal={deal} onDragStart={setDraggedDealId} onDragEnd={() => setDraggedDealId(null)} onOpenDeal={onOpenDeal} />
-                ))}
-              </div>
-              <button className="secondary-button mt-3 w-full justify-center border-dashed bg-white/70" onClick={onOpenModal} type="button">
-                <Plus size={15} aria-hidden="true" />
-                Add deal
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {forecastTotal !== null && (
-        <div className="panel mt-2 inline-flex items-center gap-6 px-4 py-3">
-          <div>
-            <div className="text-xs font-bold uppercase text-slate-500">Weighted Forecast</div>
-            <div className="text-xl font-bold text-blue-700">{money(forecastTotal)}</div>
-            <div className="text-xs text-slate-500">open deals by stage probability</div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function DealCard({
-  contact,
-  deal,
-  onDragEnd,
-  onDragStart,
-  onOpenDeal,
-}: {
-  contact?: Contact;
-  deal: Deal;
-  onDragEnd: () => void;
-  onDragStart: (id: number) => void;
-  onOpenDeal: (deal: Deal) => void;
-}) {
-  return (
-    <div
-      className="cursor-pointer rounded-md border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow-md"
-      draggable
-      onClick={() => onOpenDeal(deal)}
-      onDragEnd={onDragEnd}
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = 'move';
-        onDragStart(deal.id);
-      }}
-    >
-      <div className="text-sm font-semibold text-slate-950">{deal.title}</div>
-      {(deal.contact_name || contact?.name) && <div className="mt-1 text-xs text-slate-500">{deal.contact_name || contact?.name}</div>}
-      <div className="mt-3 flex items-center justify-between text-xs text-slate-600">
-        <span>{money(deal.value)}</span>
-        <span>{Math.round(Number(deal.probability || 0) * 100)}%</span>
-      </div>
-    </div>
-  );
-}
-
-function DealDetailView({
-  deal,
-  contacts,
-  onBack,
-  onEdit,
-  onDelete,
-}: {
-  deal: Deal;
-  contacts: Contact[];
-  onBack: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const contact = contacts.find((c) => c.id === deal.contact_id);
-  return (
-    <>
-      <SectionHeader
-        title={deal.title}
-        action={
-          <div className="flex gap-2">
-            <button className="secondary-button" onClick={onBack} type="button">
-              <ArrowLeft size={16} aria-hidden="true" />
-              Back
-            </button>
-            <button className="secondary-button" onClick={onEdit} type="button">
-              <Pencil size={16} aria-hidden="true" />
-              Edit
-            </button>
-            <button className="danger-button" onClick={onDelete} type="button">
-              <Trash2 size={16} aria-hidden="true" />
-              Delete
-            </button>
-          </div>
-        }
-      />
-      <div className="panel p-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ['Value', money(deal.value)],
-            ['Stage', deal.stage || 'Not set'],
-            ['Probability', `${Math.round(Number(deal.probability || 0) * 100)}%`],
-            ['Contact', contact?.name || deal.contact_name || 'Not set'],
-          ].map(([label, value]) => (
-            <div key={label as string}>
-              <div className="text-xs font-bold uppercase text-slate-500">{label as string}</div>
-              <div className="mt-1 text-sm text-slate-800">{value as string}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
   );
 }
 
@@ -1287,67 +1096,6 @@ function StatsView({ stats }: { stats: StatsData | null }) {
         </div>
       )}
     </>
-  );
-}
-
-function DealModal({ contacts, onClose, onSubmit }: { contacts: Contact[]; onClose: () => void; onSubmit: (body: { title: string; contact_id: number; value: number }) => Promise<void> }) {
-  const [title, setTitle] = useState('');
-  const [contactId, setContactId] = useState('');
-  const [value, setValue] = useState('');
-  return (
-    <ModalShell title="New Deal" onClose={onClose}>
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onSubmit({ title: title.trim(), contact_id: Number(contactId), value: Number(value || 0) });
-        }}
-      >
-        <TextField label="Title" value={title} onChange={setTitle} required />
-        <label className="block">
-          <span className="field-label">Contact</span>
-          <select className="field-input" value={contactId} onChange={(event) => setContactId(event.target.value)} required>
-            <option value="">Select contact</option>
-            {contacts.map((contact) => (
-              <option key={contact.id} value={contact.id}>
-                {contact.name}
-                {contact.company ? ` (${contact.company})` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <TextField label="Value" value={value} onChange={setValue} type="number" />
-        <ModalActions onClose={onClose} submitLabel="Create" />
-      </form>
-    </ModalShell>
-  );
-}
-
-function DealEditModal({
-  deal,
-  onClose,
-  onSubmit,
-}: {
-  deal: Deal;
-  onClose: () => void;
-  onSubmit: (body: Partial<Deal>) => Promise<void>;
-}) {
-  const [title, setTitle] = useState(deal.title);
-  const [value, setValue] = useState(String(deal.value ?? ''));
-  return (
-    <ModalShell title="Edit Deal" onClose={onClose}>
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onSubmit({ title: title.trim(), value: Number(value || 0) });
-        }}
-      >
-        <TextField label="Title" value={title} onChange={setTitle} required />
-        <TextField label="Value" value={value} onChange={setValue} type="number" />
-        <ModalActions onClose={onClose} submitLabel="Save" />
-      </form>
-    </ModalShell>
   );
 }
 
