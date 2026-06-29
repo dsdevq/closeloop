@@ -4,21 +4,14 @@ import {
   Building2,
   Calendar,
   ContactRound,
-  ArrowLeft,
   LogOut,
-  Pencil,
-  Plus,
   RefreshCw,
-  Trash2,
   UserRound,
 } from 'lucide-react';
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import type { Tab, User, Contact, Deal, Account, Activity, Reminder, PipelineStage, StatsData, SavedView } from './types';
 import { apiFetch, getToken, storedUser } from './lib/api';
 import { money, numberText } from './lib/formatters';
-import { TextField } from './components/ui/TextField';
-import { ModalShell } from './components/ui/ModalShell';
-import { ModalActions } from './components/ui/ModalActions';
 import { SectionHeader } from './components/ui/SectionHeader';
 import { PipelineView } from './features/pipeline/PipelineView';
 import { DealDetailView } from './features/pipeline/DealDetailView';
@@ -31,6 +24,9 @@ import { ContactEditModal } from './features/contacts/ContactEditModal';
 import { ImportModal } from './features/contacts/ImportModal';
 import { AccountsView } from './features/accounts/AccountsView';
 import { AccountModal } from './features/accounts/AccountModal';
+import { ActivitiesView } from './features/activities/ActivitiesView';
+import { ActivityDetailView } from './features/activities/ActivityDetailView';
+import { ActivityModal } from './features/activities/ActivityModal';
 
 function isLoginPath() {
   return window.location.pathname.endsWith('/login.html');
@@ -614,134 +610,6 @@ function LoginView({ onLogin }: { onLogin: (email: string, password: string) => 
   );
 }
 
-function ActivitiesView({
-  activities,
-  contacts,
-  onOpenModal,
-  onOpenActivity,
-}: {
-  activities: Activity[];
-  contacts: Contact[];
-  onOpenModal: () => void;
-  onOpenActivity: (activity: Activity) => void;
-}) {
-  const contactById = useMemo(() => new Map(contacts.map((c) => [c.id, c])), [contacts]);
-  return (
-    <>
-      <SectionHeader
-        title="Activities"
-        action={
-          <button className="primary-button" onClick={onOpenModal} type="button">
-            <Plus size={16} aria-hidden="true" />
-            New Activity
-          </button>
-        }
-      />
-      <div className="panel overflow-hidden">
-        <table className="w-full border-collapse">
-          <thead className="table-head">
-            <tr>
-              <th className="px-4 py-3">Title</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Contact</th>
-              <th className="px-4 py-3">Due</th>
-            </tr>
-          </thead>
-          <tbody>
-            {activities.map((activity) => {
-              const contact = activity.contact_id ? contactById.get(activity.contact_id) : null;
-              return (
-                <tr key={activity.id} className="hover:bg-slate-50">
-                  <td className="table-cell font-semibold text-slate-900">
-                    <button
-                      className="font-semibold text-blue-700 hover:underline text-left"
-                      onClick={() => onOpenActivity(activity)}
-                      type="button"
-                    >
-                      {activity.title}
-                    </button>
-                  </td>
-                  <td className="table-cell">
-                    <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 uppercase">{activity.type}</span>
-                  </td>
-                  <td className="table-cell">{contact?.name || ''}</td>
-                  <td className="table-cell">{activity.due_at ? new Date(activity.due_at).toLocaleDateString() : ''}</td>
-                </tr>
-              );
-            })}
-            {activities.length === 0 && (
-              <tr>
-                <td className="px-4 py-10 text-center text-sm text-slate-500" colSpan={4}>
-                  No activities yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
-
-function ActivityDetailView({
-  activity,
-  contacts,
-  onBack,
-  onEdit,
-  onDelete,
-}: {
-  activity: Activity;
-  contacts: Contact[];
-  onBack: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const contact = contacts.find((c) => c.id === activity.contact_id);
-  return (
-    <>
-      <SectionHeader
-        title={activity.title}
-        action={
-          <div className="flex gap-2">
-            <button className="secondary-button" onClick={onBack} type="button">
-              <ArrowLeft size={16} aria-hidden="true" />
-              Back
-            </button>
-            <button className="secondary-button" onClick={onEdit} type="button">
-              <Pencil size={16} aria-hidden="true" />
-              Edit
-            </button>
-            <button className="danger-button" onClick={onDelete} type="button">
-              <Trash2 size={16} aria-hidden="true" />
-              Delete
-            </button>
-          </div>
-        }
-      />
-      <div className="panel p-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ['Type', activity.type],
-            ['Contact', contact?.name || 'None'],
-            ['Due', activity.due_at ? new Date(activity.due_at).toLocaleString() : 'Not set'],
-            ['Completed', activity.completed_at ? new Date(activity.completed_at).toLocaleString() : 'No'],
-          ].map(([label, value]) => (
-            <div key={label as string}>
-              <div className="text-xs font-bold uppercase text-slate-500">{label as string}</div>
-              <div className="mt-1 text-sm text-slate-800">{(value as string) || 'Not set'}</div>
-            </div>
-          ))}
-        </div>
-        {activity.body && (
-          <div className="mt-4">
-            <div className="text-xs font-bold uppercase text-slate-500">Notes</div>
-            <div className="mt-1 text-sm text-slate-800 whitespace-pre-wrap">{activity.body}</div>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
 
 function TodayView({ reminders, onDismiss }: { reminders: Reminder[]; onDismiss: (id: number) => void }) {
   return (
@@ -809,71 +677,6 @@ function StatsView({ stats }: { stats: StatsData | null }) {
         </div>
       )}
     </>
-  );
-}
-
-const ACTIVITY_TYPES = ['call', 'email', 'meeting', 'note'] as const;
-
-function ActivityModal({
-  activity,
-  contacts,
-  onClose,
-  onSubmit,
-}: {
-  activity?: Activity;
-  contacts: Contact[];
-  onClose: () => void;
-  onSubmit: (body: { title: string; type: string; body?: string; contact_id?: number }) => Promise<void>;
-}) {
-  const [title, setTitle] = useState(activity?.title ?? '');
-  const [type, setType] = useState(activity?.type ?? 'call');
-  const [body, setBody] = useState(activity?.body ?? '');
-  const [contactId, setContactId] = useState(String(activity?.contact_id ?? ''));
-  const isEdit = Boolean(activity);
-  return (
-    <ModalShell title={isEdit ? 'Edit Activity' : 'New Activity'} onClose={onClose}>
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onSubmit({
-            title: title.trim(),
-            type,
-            body: body.trim() || undefined,
-            contact_id: contactId ? Number(contactId) : undefined,
-          });
-        }}
-      >
-        <TextField label="Title" value={title} onChange={setTitle} required />
-        <label className="block">
-          <span className="field-label">Type</span>
-          <select className="field-input" value={type} onChange={(e) => setType(e.target.value)}>
-            {ACTIVITY_TYPES.map((t) => (
-              <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="field-label">Contact</span>
-          <select className="field-input" value={contactId} onChange={(e) => setContactId(e.target.value)}>
-            <option value="">None</option>
-            {contacts.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="field-label">Notes</span>
-          <textarea
-            className="field-input"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={3}
-          />
-        </label>
-        <ModalActions onClose={onClose} submitLabel={isEdit ? 'Save' : 'Create'} />
-      </form>
-    </ModalShell>
   );
 }
 
