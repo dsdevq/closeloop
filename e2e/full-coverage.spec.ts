@@ -4,7 +4,7 @@
  * Covers: route coverage, interactive controls, Contacts/Deals/Activities CRUD,
  * Import/Export, Auth flows.
  *
- * All 22+ tests must pass under: npx playwright test --reporter=list
+ * All 29 tests must pass under: npx playwright test --reporter=list
  * Env: TEST_USER / TEST_PASS (defaults: admin@closeloop.com / admin123)
  */
 
@@ -528,6 +528,38 @@ test.describe('Activities CRUD', () => {
   });
 });
 
+// ── ACCOUNTS CRUD ────────────────────────────────────────────────────────────
+
+test.describe('Accounts CRUD', () => {
+  test('accounts - detail shows linked contacts section', async ({ page, request }) => {
+    await loginAndWait(page);
+    const tok = await bearerToken(page);
+    const createRes = await request.post('/accounts', {
+      data: { name: 'FC Accounts Detail', domain: 'fcdetail.example.com', industry: 'Technology' },
+      headers: auth(tok),
+    });
+    expect(createRes.ok()).toBeTruthy();
+    const account = await createRes.json();
+
+    try {
+      await reloadDashboard(page);
+      await page.getByRole('button', { name: 'Accounts' }).click();
+      await expect(page.getByRole('cell', { name: 'FC Accounts Detail' })).toBeVisible({ timeout: 8_000 });
+
+      // Click the account name button to open the detail view
+      await page.getByRole('button', { name: 'FC Accounts Detail' }).first().click();
+      await expect(page.getByRole('heading', { name: 'FC Accounts Detail' })).toBeVisible({ timeout: 5_000 });
+
+      // Linked Contacts section header must be present whether or not contacts are linked
+      await expect(page.getByRole('heading', { name: 'Linked Contacts' })).toBeVisible();
+      // Empty-state message is shown when no contacts are linked to this account
+      await expect(page.getByText('No linked contacts.')).toBeVisible();
+    } finally {
+      await request.delete(`/accounts/${account.id}`, { headers: auth(tok) });
+    }
+  });
+});
+
 // ── IMPORT / EXPORT ───────────────────────────────────────────────────────────
 
 test.describe('Import / Export', () => {
@@ -835,6 +867,17 @@ test.describe('Auth flow', () => {
 
     await expect(page.locator('.text-red-700')).toBeVisible({ timeout: 8_000 });
     await expect(page.getByRole('button', { name: 'Pipeline' })).not.toBeVisible();
+  });
+
+  test('logout button is visible and clickable from authenticated page', async ({ page }) => {
+    await loginAndWait(page);
+    await page.getByRole('button', { name: 'Contacts' }).click();
+
+    // The Sign out icon button (title="Sign out") lives in the nav header on every authenticated page
+    const logoutBtn = page.getByTitle('Sign out');
+    await expect(logoutBtn).toBeVisible({ timeout: 5_000 });
+    await expect(logoutBtn).toBeEnabled();
+    // Do NOT click — clicking would clear tokens and break auth state for subsequent tests
   });
 
   test('auth - protected route redirects unauthenticated user', async ({ page }) => {
