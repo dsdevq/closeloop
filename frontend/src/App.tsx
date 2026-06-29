@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Tab, User, Contact, Deal, Account, Activity, Reminder, PipelineStage, StatsData, SavedView } from './types';
+import { apiFetch, getToken, storedUser } from './lib/api';
+import { money, numberText } from './lib/formatters';
 
 const stagePalette = [
   'border-l-blue-600',
@@ -28,45 +30,6 @@ const stagePalette = [
   'border-l-violet-600',
   'border-l-pink-600',
 ];
-
-function storedUser(): User {
-  try {
-    return JSON.parse(localStorage.getItem('current_user') || '{}') as User;
-  } catch {
-    return {};
-  }
-}
-
-function getToken() {
-  return localStorage.getItem('access_token');
-}
-
-async function apiFetch(path: string, init: RequestInit = {}) {
-  const headers = new Headers(init.headers || {});
-  headers.set('Content-Type', headers.get('Content-Type') || 'application/json');
-  const token = getToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-
-  const response = await fetch(path, { ...init, headers });
-  if (response.status === 401) {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('current_user');
-    window.location.replace('/login.html');
-  }
-  return response;
-}
-
-function money(value: number | null | undefined) {
-  return `$${Number(value || 0).toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
-}
-
-function numberText(value: number | null | undefined) {
-  return Number(value || 0).toLocaleString('en-US');
-}
 
 function isLoginPath() {
   return window.location.pathname.endsWith('/login.html');

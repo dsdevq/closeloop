@@ -184,6 +184,7 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 - The build script copies `app/static/index.html` to `app/static/login.html` so FastAPI serves the same React auth-aware SPA at both routes.
 - Use typed React state and normal JSX escaping. Avoid `dangerouslySetInnerHTML` for user-supplied data.
 - API calls should go through the shared `apiFetch()` helper so 401 responses consistently clear tokens and route to `/login.html`.
+- `apiFetch`, `getToken`, and `storedUser` live in `frontend/src/lib/api.ts` (imports `User` from `../types`). Display formatters `money` and `numberText` live in `frontend/src/lib/formatters.ts` (no React/DOM dependency). Import these from `./lib/api` and `./lib/formatters` in `App.tsx`.
 
 ## Auth layer (v1)
 
