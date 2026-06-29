@@ -12,71 +12,8 @@
  */
 
 import path from 'path';
-import { test as base, expect, type Page } from '@playwright/test';
-
-// ── Auto-fixture: collect JS errors and fail the test if any occurred ──────────
-const test = base.extend<{ _jsGuard: void }>({
-  _jsGuard: [
-    async ({ page }, use) => {
-      const errors: string[] = [];
-      page.on('pageerror', (err) => errors.push(`Uncaught: ${err.message}`));
-      page.on('console', (msg) => {
-        if (msg.type() === 'error') {
-          // Chromium emits a console.error for every non-2xx fetch response (e.g. 401
-          // on intentional failed login).  These are browser-generated network messages,
-          // not JavaScript errors in our application code, so we skip them here.
-          if (msg.text().startsWith('Failed to load resource:')) return;
-          errors.push(`console.error: ${msg.text()}`);
-        }
-      });
-      await use();
-      for (const e of errors) {
-        expect.soft(e, 'Browser-side JavaScript error').toBeFalsy();
-      }
-    },
-    { auto: true },
-  ],
-});
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-const TEST_USER = process.env.TEST_USER ?? 'admin@closeloop.com';
-const TEST_PASS = process.env.TEST_PASS ?? 'admin123';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function login(page: Page, email = TEST_USER, pass = TEST_PASS) {
-  await page.goto('/login.html');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(pass);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-}
-
-/** Login and wait until the dashboard nav tabs are visible. */
-async function loginAndWait(page: Page) {
-  await login(page);
-  await expect(page.getByRole('button', { name: 'Pipeline' })).toBeVisible({ timeout: 15_000 });
-}
-
-/**
- * Reload the page and wait for the dashboard to re-hydrate from localStorage.
- * Use this after creating data via API so the React state picks up the new rows.
- */
-async function reloadDashboard(page: Page) {
-  await page.reload();
-  await expect(page.getByRole('button', { name: 'Pipeline' })).toBeVisible({ timeout: 15_000 });
-}
-
-/** Read the Bearer token from the page's localStorage. */
-async function bearerToken(page: Page): Promise<string> {
-  const t = await page.evaluate(() => localStorage.getItem('access_token'));
-  if (!t) throw new Error('access_token not found in localStorage');
-  return t;
-}
-
-/** Auth headers shorthand. */
-function auth(tok: string) {
-  return { Authorization: `Bearer ${tok}` };
-}
+import { expect } from '@playwright/test';
+import { test, loginAndWait, reloadDashboard, bearerToken, auth } from './helpers';
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 
@@ -372,14 +309,6 @@ test.describe('Import', () => {
     }
   });
 
-  test.fixme('import UI trigger [UI gap — no import button in current SPA]', async ({ page }) => {
-    await loginAndWait(page);
-    // Expected to FAIL: the SPA has no import button/modal — defect marker
-    const trigger = page
-      .getByRole('button', { name: /import/i })
-      .or(page.getByRole('link', { name: /import/i }));
-    await expect(trigger).toBeVisible({ timeout: 3_000 });
-  });
 });
 
 // ── Export (smoke) ────────────────────────────────────────────────────────────
@@ -402,14 +331,6 @@ test.describe('Export', () => {
     expect(csv).toContain('id');
   });
 
-  test.fixme('export UI trigger [UI gap — no export button in current SPA]', async ({ page }) => {
-    await loginAndWait(page);
-    // Expected to FAIL: the SPA has no export button — defect marker
-    const trigger = page
-      .getByRole('button', { name: /export/i })
-      .or(page.getByRole('link', { name: /export/i }));
-    await expect(trigger).toBeVisible({ timeout: 3_000 });
-  });
 });
 
 // ── Import / Export (full-coverage) ──────────────────────────────────────────

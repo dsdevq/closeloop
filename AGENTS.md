@@ -60,12 +60,11 @@ npx playwright test --reporter=list
 #       the config uses E2E_PORT=8088 to avoid the conflict.
 ```
 
-**E2E test results (verified 2026-06-29): 52 passed / 0 failed / 5 fixme-skipped** (57 total)
+**E2E test results (verified 2026-06-29): 52 passed / 0 failed / 2 fixme-skipped** (54 total)
 
-The 5 `test.fixme` items remain as skipped defect markers for UI gaps:
-- `contacts.spec.ts`: contact detail/edit UI [UI gap], import UI trigger [UI gap], export UI trigger [UI gap]
+The 2 `test.fixme` items remain as skipped defect markers for genuine UI gaps:
+- `contacts.spec.ts`: contact detail/edit UI [UI gap]
 - `pipeline.spec.ts`: deal detail/edit UI [UI gap]
-- `activities.spec.ts`: Activities navigation tab [UI gap]
 
 > **ARM64 pipe gotcha** — `playwright.config.ts` uses `stdout: 'ignore', stderr: 'ignore'` for the
 > webServer. On ARM64 Linux the OS pipe buffer (~64 KB) fills after ~10 tests when set to `'pipe'`,
@@ -78,9 +77,9 @@ The 5 `test.fixme` items remain as skipped defect markers for UI gaps:
 | 2 | ✅ Fixed | Deals CRUD › create deal via modal — appears on kanban | `POST /deals` now sets `stage_id` to first pipeline stage |
 | 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | In pipeline.spec.ts; full CRUD covered by 'deals - detail' |
 | 4 | ✅ Stub | Accounts CRUD › edit account [stub Edit button visible] | Disabled Edit button added to account detail header; full form is a follow-up goal |
-| 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | ✅ Activities tab added to SPA; activities.spec.ts covers it |
-| 6 | `test.fixme` | Import › import UI trigger [UI gap] | ✅ Import CSV button added; contacts.spec.ts covers it |
-| 7 | `test.fixme` | Export › export UI trigger [UI gap] | ✅ Export CSV button added; contacts.spec.ts covers it |
+| 5 | ✅ Removed | Activities CRUD › Activities nav tab | Stale fixme removed — Activities tab present in AppHeader.tsx; covered by 'activities - list' |
+| 6 | ✅ Removed | Import › import UI trigger | Stale fixme removed — Import CSV button present in ContactsView.tsx; covered by 'import - upload triggers feedback' |
+| 7 | ✅ Removed | Export › export UI trigger | Stale fixme removed — Export CSV button present in ContactsView.tsx; covered by 'export - download initiated' |
 
 ## Repo layout
 
@@ -145,11 +144,12 @@ tests/
   conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override, seeded admin+token)
   test_*.py      — one file per concern
 e2e/
+  helpers.ts          — Shared exports: test fixture (_jsGuard), TEST_USER/TEST_PASS, login/loginAndWait/reloadDashboard/bearerToken/auth
   auth.spec.ts        — Basic load, Auth (login/logout/guard), Route coverage, Auth flow (10 tests)
-  pipeline.spec.ts    — Pipeline nav, Deals CRUD smoke+FC, drag-and-drop, per-stage Add Deal (12 tests)
-  contacts.spec.ts    — Contacts nav, Contacts CRUD smoke+FC, Import/Export, saved-view Apply/Clear (19 tests)
+  pipeline.spec.ts    — Pipeline nav, Deals CRUD smoke+FC, drag-and-drop, per-stage Add Deal (11 tests + 1 fixme)
+  contacts.spec.ts    — Contacts nav, Contacts CRUD smoke+FC, Import/Export, saved-view Apply/Clear (16 tests + 1 fixme)
   accounts.spec.ts    — Accounts nav, Accounts CRUD smoke+FC (6 tests)
-  activities.spec.ts  — Activities CRUD smoke+FC (7 tests; 1 fixme: Activities nav [UI gap])
+  activities.spec.ts  — Activities CRUD smoke+FC (6 tests)
   stats.spec.ts       — Stats nav (1 test)
   today.spec.ts       — Today nav, reminder Dismiss (2 tests)
   tsconfig.json       — TypeScript config for e2e tests
@@ -220,13 +220,15 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 
 #### E2E spec layout (`e2e/`)
 
-One spec file per feature area; each is self-contained with its own setup/teardown:
+`e2e/helpers.ts` — shared exports for all spec files: `test` (extended with auto `_jsGuard` fixture), `TEST_USER`, `TEST_PASS`, `login`, `loginAndWait`, `reloadDashboard`, `bearerToken`, `auth`. Every spec file imports from here instead of duplicating boilerplate.
+
+One spec file per feature area:
 
 - `auth.spec.ts` — basic SPA load, login/logout/guard, route coverage (10 tests)
-- `pipeline.spec.ts` — Pipeline nav, Deals CRUD, drag-and-drop, per-stage Add Deal (12 tests)
-- `contacts.spec.ts` — Contacts nav, Contacts CRUD, Import/Export, saved-view Apply/Clear (19 tests)
+- `pipeline.spec.ts` — Pipeline nav, Deals CRUD, drag-and-drop, per-stage Add Deal (11 tests + 1 fixme)
+- `contacts.spec.ts` — Contacts nav, Contacts CRUD, Import/Export, saved-view Apply/Clear (16 tests + 1 fixme)
 - `accounts.spec.ts` — Accounts nav, Accounts CRUD (6 tests)
-- `activities.spec.ts` — Activities CRUD (7 tests; 1 fixme: Activities nav [UI gap])
+- `activities.spec.ts` — Activities CRUD (6 tests)
 - `stats.spec.ts` — Stats nav (1 test)
 - `today.spec.ts` — Today nav, reminder Dismiss (2 tests)
 
