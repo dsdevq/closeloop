@@ -294,8 +294,6 @@ test.describe('Deals CRUD', () => {
       await page.getByLabel('Value').fill('5000');
       await page.getByRole('button', { name: 'Create' }).click();
 
-      // Bug: newly-created deals have stage_id=null so they never match any kanban column.
-      // This assertion FAILS as a defect marker for the missing stage_id assignment on POST /deals.
       await expect(page.getByText(dealTitle)).toBeVisible({ timeout: 8_000 });
     } finally {
       // Cleanup runs even if the kanban assertion above fails

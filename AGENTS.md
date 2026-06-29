@@ -60,14 +60,17 @@ npx playwright test --reporter=list
 #       the config uses E2E_PORT=8088 to avoid the conflict.
 ```
 
-**Smoke test results (verified 2026-06-28): 22 passed / 0 failed / 6 fixme-skipped**
+**Smoke test results (verified 2026-06-29): 22 passed / 0 failed / 6 fixme-skipped**
 
-**Full-coverage test results (verified 2026-06-28): 22 passed / 0 failed** (see below)
+**Full-coverage test results (verified 2026-06-29): 27 passed / 0 failed** (see below)
 
 The stage_id bug (#2 below) was fixed in `app/routers/deals.py`. The 6 `test.fixme` items in
 `e2e/smoke.spec.ts` remain as skipped defect markers for UI gaps NOT yet addressed in the smoke
-suite; however the NEW `e2e/full-coverage.spec.ts` suite implements all 22 named tests that DO
-pass (including the UI features added to the SPA).
+suite. The stale "assertion FAILS" prose comment was removed from smoke.spec.ts (stage_id is fixed).
+
+`e2e/full-coverage.spec.ts` now contains 27 tests (22 original + 5 new interactive controls):
+the original 22 + 5 added covering drag-and-drop, saved-view Apply, saved-view Clear, per-stage
+Add Deal shortcut, and Today reminder Dismiss.
 
 > **ARM64 pipe gotcha** — `playwright.config.ts` uses `stdout: 'ignore', stderr: 'ignore'` for the
 > webServer. On ARM64 Linux the OS pipe buffer (~64 KB) fills after ~10 tests when set to `'pipe'`,
@@ -84,10 +87,11 @@ pass (including the UI features added to the SPA).
 | 6 | `test.fixme` | Import › import UI trigger [UI gap] | ✅ Import CSV button added; full-coverage.spec.ts covers it |
 | 7 | `test.fixme` | Export › export UI trigger [UI gap] | ✅ Export CSV button added; full-coverage.spec.ts covers it |
 
-**Full-coverage test results (verified 2026-06-28): 22 passed / 0 failed**
+**Full-coverage test results (verified 2026-06-29): 27 passed / 0 failed**
 
-`e2e/full-coverage.spec.ts` contains 22 tests covering route coverage, interactive controls,
-Contacts/Deals/Activities CRUD (5 tests each), Import/Export, and Auth flows. Run with:
+`e2e/full-coverage.spec.ts` contains 27 tests covering route coverage, interactive controls,
+Contacts/Deals/Activities CRUD (5 tests each), Import/Export, Auth flows, and the new Extended
+Interactive Controls block. Run with:
 
 ```bash
 npx playwright test e2e/full-coverage.spec.ts --reporter=list
