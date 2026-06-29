@@ -5,7 +5,7 @@ import { ContactModal } from '../features/contacts/ContactModal';
 import { ContactEditModal } from '../features/contacts/ContactEditModal';
 import { ImportModal } from '../features/contacts/ImportModal';
 import { AccountModal } from '../features/accounts/AccountModal';
-import { ActivityModal } from '../features/activities/ActivityModal';
+import { ActivityFormModal } from '../features/activities/ActivityFormModal';
 
 interface AppModalsProps {
   contacts: Contact[];
@@ -65,14 +65,14 @@ export function AppModals({
         />
       )}
       {showNewActivity && (
-        <ActivityModal
+        <ActivityFormModal
           contacts={contacts}
           onClose={onCloseNewActivity}
           onSubmit={async (body) => { await onCreateActivity(body); onCloseNewActivity(); }}
         />
       )}
       {activityToEdit && (
-        <ActivityModal
+        <ActivityFormModal
           activity={activityToEdit}
           contacts={contacts}
           onClose={onCloseActivityEdit}

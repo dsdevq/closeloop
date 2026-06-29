@@ -127,11 +127,17 @@ frontend/
     pipeline/    — kanban board (PipelineView, DealCard, DealDetailView, DealModal, DealEditModal)
     contacts/    — contacts list + detail + CSV import/export (ContactsView, ContactDetailView, ContactModal, ContactEditModal, ImportModal)
     accounts/    — accounts list and create (AccountsView, AccountModal)
-    activities/  — activities list + detail (ActivitiesView, ActivityDetailView, ActivityModal)
+    activities/  — activities list + detail (ActivitiesView, ActivityDetailView, ActivityFormModal; ActivityFormModal owns `ACTIVITY_TYPES` const)
     today/       — reminders queue with dismiss (TodayView)
     stats/       — aggregate metrics dashboard (StatsView)
     auth/        — login form (LoginView)
-  src/hooks/useAppState.ts — all useState, useCallback, useEffect, and async CRUD actions
+  src/hooks/
+    useAuth.ts      — token/user state, handleLogin, logout, login-redirect effect
+    useDeals.ts     — deals state + CRUD (createDeal, updateDeal, deleteDeal, moveDeal, loadDeals)
+    useContacts.ts  — contacts state + CRUD (createContact, updateContact, deleteContact, loadContacts, exportContacts)
+    useAccounts.ts  — accounts state + CRUD (createAccount, updateAccount, deleteAccount, loadAccounts); account-detail effect
+    useActivities.ts— activities state + CRUD (createActivity, updateActivity, deleteActivity, loadActivities)
+    useAppState.ts  — composition hook: calls the five above, owns remaining app-level state (activeTab, stages, today, savedViews, stats, modal, toast, loading) and orchestrates refreshCore + effects
   src/App.tsx    — React CRM app entry: hook call + render tree only (≤175 lines)
   src/styles.css — Tailwind base/components/utilities
   vite.config.ts — builds into `app/static/`; dev proxy targets FastAPI on :8000
@@ -204,7 +210,7 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
   - `pipeline/` — kanban board with drag-and-drop stage moves (`PipelineView`, `DealCard`, `DealDetailView`, `DealModal`, `DealEditModal`; `PipelineView` owns `stagePalette`)
   - `contacts/` — contacts list + detail + CSV import/export (`ContactsView`, `ContactDetailView`, `ContactModal`, `ContactEditModal`, `ImportModal`)
   - `accounts/` — accounts list and create modal (`AccountsView`, `AccountModal`)
-  - `activities/` — activities list + detail (`ActivitiesView`, `ActivityDetailView`, `ActivityModal`; `ActivityModal` owns `ACTIVITY_TYPES` const)
+  - `activities/` — activities list + detail (`ActivitiesView`, `ActivityDetailView`, `ActivityFormModal`; `ActivityFormModal` owns `ACTIVITY_TYPES` const)
   - `today/` — reminders queue with dismiss action (`TodayView`)
   - `stats/` — aggregate metrics dashboard (`StatsView`)
   - `auth/` — login form with no hardcoded credential defaults (`LoginView`)
@@ -343,7 +349,7 @@ One spec file per feature area; each is self-contained with its own setup/teardo
 |------|--------|------|
 | `frontend/src/App.tsx` | Added `activities` state + `Calendar` tab | 'activities - list', 'activities - create' |
 | `frontend/src/App.tsx` | `ActivitiesView` + `ActivityDetailView` components | 'activities - detail', 'activities - update', 'activities - delete' |
-| `frontend/src/App.tsx` | `ActivityModal` (create + edit) | 'activities - create', 'activities - update' |
+| `frontend/src/App.tsx` | `ActivityFormModal` (create + edit) | 'activities - create', 'activities - update' |
 | `frontend/src/App.tsx` | Contact name → clickable button, `ContactDetailView` | 'contacts - detail', 'contacts - update', 'contacts - delete' |
 | `frontend/src/App.tsx` | `ContactEditModal` (PATCH /contacts/:id) | 'contacts - update' |
 | `frontend/src/App.tsx` | `DealCard` onClick → `DealDetailView` | 'deals - detail', 'deals - update', 'deals - delete' |

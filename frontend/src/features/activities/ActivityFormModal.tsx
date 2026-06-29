@@ -6,7 +6,7 @@ import { ModalActions } from '../../components/ui/ModalActions';
 
 const ACTIVITY_TYPES = ['call', 'email', 'meeting', 'note'] as const;
 
-export function ActivityModal({
+export function ActivityFormModal({
   activity,
   contacts,
   onClose,
