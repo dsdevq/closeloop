@@ -60,7 +60,7 @@ npx playwright test --reporter=list
 #       the config uses E2E_PORT=8088 to avoid the conflict.
 ```
 
-**Smoke test results (verified 2026-06-29): 22 passed / 0 failed / 6 fixme-skipped**
+**Smoke test results (verified 2026-06-29): 23 passed / 0 failed / 5 fixme-skipped**
 
 **Full-coverage test results (verified 2026-06-29): 27 passed / 0 failed** (see below)
 
@@ -82,7 +82,7 @@ Add Deal shortcut, and Today reminder Dismiss.
 | 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | Smoke skipped; covered by full-coverage.spec.ts 'contacts - detail' |
 | 2 | ✅ Fixed | Deals CRUD › create deal via modal — appears on kanban | `POST /deals` now sets `stage_id` to first pipeline stage |
 | 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | Smoke skipped; covered by full-coverage.spec.ts 'deals - detail' |
-| 4 | `test.fixme` | Accounts CRUD › edit account [UI gap] | No edit form in account detail view (still outstanding) |
+| 4 | ✅ Stub | Accounts CRUD › edit account [stub Edit button visible] | Disabled Edit button added to account detail header; full form is a follow-up goal |
 | 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | ✅ Activities tab added to SPA; full-coverage.spec.ts covers it |
 | 6 | `test.fixme` | Import › import UI trigger [UI gap] | ✅ Import CSV button added; full-coverage.spec.ts covers it |
 | 7 | `test.fixme` | Export › export UI trigger [UI gap] | ✅ Export CSV button added; full-coverage.spec.ts covers it |
@@ -137,7 +137,7 @@ tests/
   conftest.py    — client fixture (in-memory SQLite, StaticPool, get_db override, seeded admin+token)
   test_*.py      — one file per concern
 e2e/
-  smoke.spec.ts       — Playwright headless smoke tests (22 pass, 6 fixme-skipped defect markers)
+  smoke.spec.ts       — Playwright headless smoke tests (23 pass, 5 fixme-skipped defect markers)
   full-coverage.spec.ts — 22 named tests covering all clauses: route coverage, interactive
                           controls, Contacts/Deals/Activities CRUD (5 each), Import/Export, Auth
   tsconfig.json       — TypeScript config for e2e tests

@@ -1153,6 +1153,11 @@ function AccountsView({
                 <ArrowLeft size={16} aria-hidden="true" />
                 Back
               </button>
+              {/* TODO: Account edit form — follow-up goal (PATCH /accounts/:id API exists, UI not yet implemented) */}
+              <button className="secondary-button" disabled type="button">
+                <Pencil size={16} aria-hidden="true" />
+                Edit
+              </button>
               <button className="danger-button" onClick={() => onDeleteAccount(account.id)} type="button">
                 <Trash2 size={16} aria-hidden="true" />
                 Delete
