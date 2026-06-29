@@ -185,6 +185,7 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 - Use typed React state and normal JSX escaping. Avoid `dangerouslySetInnerHTML` for user-supplied data.
 - API calls should go through the shared `apiFetch()` helper so 401 responses consistently clear tokens and route to `/login.html`.
 - `apiFetch`, `getToken`, and `storedUser` live in `frontend/src/lib/api.ts` (imports `User` from `../types`). Display formatters `money` and `numberText` live in `frontend/src/lib/formatters.ts` (no React/DOM dependency). Import these from `./lib/api` and `./lib/formatters` in `App.tsx`.
+- Shared presentational primitives (TextField, ModalShell, ModalActions, SectionHeader, SavedViewsBar) live in `frontend/src/components/ui/` — each file exports a single named export matching the filename. `SavedViewsBar` imports `SavedView` from `../../types` and `Search` from `lucide-react`; it receives data/callbacks as props (no internal `apiFetch` call).
 
 ## Auth layer (v1)
 
