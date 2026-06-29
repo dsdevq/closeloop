@@ -375,3 +375,55 @@ One spec file per feature area:
 - **Tags router uses `/tags/contacts/{id}` and `/tags/deals/{id}` prefixes** (not nested under `/contacts/{id}/tags`) to keep the router self-contained under the `/tags` prefix.
 - **`POST /outbox/digest` path conflict** — `POST /outbox` and `POST /outbox/digest` are different paths; `GET /outbox/{message_id}` uses `int` type annotation so "digest" would 422 on GET but the POST endpoint has a distinct path that matches before the int param.
 - **`compute_lead_score_v2` with `use_decay=False` and default weights is bit-identical to v1** — verified by test `test_v2_use_decay_false_matches_v1`. Use this when comparing scores for regression.
+
+## Verification Evidence — 2026-06-29
+
+### 1. pipeline.spec.ts fixme status
+
+No `test.fixme` block exists anywhere in `e2e/pipeline.spec.ts`. Lines 86–119 contain an active `test('deal detail/edit UI', ...)` block (not fixme). The deal-creation call inside that block (lines 100–103) explicitly includes `stage_id` in the request body:
+
+```
+const dRes = await request.post('/deals', {
+  data: { title: 'Gap Test Deal', contact_id: contact.id, value: 100, stage_id: stageId },
+  headers: auth(tok),
+});
+```
+
+### 2. e2e/ file tree
+
+```
+e2e/
+  accounts.spec.ts
+  activities.spec.ts
+  auth.spec.ts
+  contacts.spec.ts
+  fixtures/
+    contacts.csv
+  helpers.ts
+  pipeline.spec.ts
+  stats.spec.ts
+  today.spec.ts
+  tsconfig.json
+```
+
+### 3. AccountsView.tsx — Owner ID column
+
+**ABSENT.** The table in `frontend/src/features/accounts/AccountsView.tsx` has exactly four columns. The `<thead>` (lines 28–34) contains:
+
+```tsx
+<th className="px-4 py-3">Name</th>
+<th className="px-4 py-3">Domain</th>
+<th className="px-4 py-3">Industry</th>
+<th className="px-4 py-3">Contacts</th>
+```
+
+The matching `<tbody>` cells (lines 47–49) render `item.domain`, `item.industry`, and `item.contact_count`. There is no `Owner ID` header or cell anywhere in the file.
+
+### 4. Playwright test run
+
+Command: `LD_LIBRARY_PATH="$HOME/lib:$LD_LIBRARY_PATH" PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1 ./node_modules/.bin/playwright test --reporter=line`
+
+- **Exit code:** 0
+- **Summary line:** `54 passed (1.2m)`
+- **Passed:** 54
+- **Failed:** 0
