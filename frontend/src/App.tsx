@@ -1,20 +1,18 @@
 import {
-  ArrowLeft,
   BarChart3,
   Bell,
   Building2,
   Calendar,
   ContactRound,
-  Download,
+  ArrowLeft,
   LogOut,
   Pencil,
   Plus,
   RefreshCw,
   Trash2,
-  Upload,
   UserRound,
 } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Tab, User, Contact, Deal, Account, Activity, Reminder, PipelineStage, StatsData, SavedView } from './types';
 import { apiFetch, getToken, storedUser } from './lib/api';
 import { money, numberText } from './lib/formatters';
@@ -22,11 +20,15 @@ import { TextField } from './components/ui/TextField';
 import { ModalShell } from './components/ui/ModalShell';
 import { ModalActions } from './components/ui/ModalActions';
 import { SectionHeader } from './components/ui/SectionHeader';
-import { SavedViewsBar } from './components/ui/SavedViewsBar';
 import { PipelineView } from './features/pipeline/PipelineView';
 import { DealDetailView } from './features/pipeline/DealDetailView';
 import { DealModal } from './features/pipeline/DealModal';
 import { DealEditModal } from './features/pipeline/DealEditModal';
+import { ContactsView } from './features/contacts/ContactsView';
+import { ContactDetailView } from './features/contacts/ContactDetailView';
+import { ContactModal } from './features/contacts/ContactModal';
+import { ContactEditModal } from './features/contacts/ContactEditModal';
+import { ImportModal } from './features/contacts/ImportModal';
 
 function isLoginPath() {
   return window.location.pathname.endsWith('/login.html');
@@ -610,161 +612,6 @@ function LoginView({ onLogin }: { onLogin: (email: string, password: string) => 
   );
 }
 
-function ContactsView({
-  accounts,
-  activeSavedView,
-  contacts,
-  onApplySavedView,
-  onClearSavedView,
-  onOpenAccount,
-  onOpenContact,
-  onOpenModal,
-  onImport,
-  onExport,
-  savedViews,
-}: {
-  accounts: Account[];
-  activeSavedView?: string;
-  contacts: Contact[];
-  onApplySavedView: (id: number, name: string) => void;
-  onClearSavedView: () => void;
-  onOpenAccount: (id: number) => void;
-  onOpenContact: (contact: Contact) => void;
-  onOpenModal: () => void;
-  onImport: () => void;
-  onExport: () => void;
-  savedViews: SavedView[];
-}) {
-  const accountById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
-  return (
-    <>
-      <SectionHeader
-        title="Contacts"
-        action={
-          <div className="flex gap-2">
-            <button className="secondary-button" onClick={onImport} type="button">
-              <Upload size={16} aria-hidden="true" />
-              Import CSV
-            </button>
-            <button className="secondary-button" onClick={onExport} type="button">
-              <Download size={16} aria-hidden="true" />
-              Export CSV
-            </button>
-            <button className="primary-button" onClick={onOpenModal} type="button">
-              <Plus size={16} aria-hidden="true" />
-              New Contact
-            </button>
-          </div>
-        }
-      />
-      <SavedViewsBar views={savedViews} activeName={activeSavedView} onApply={onApplySavedView} onClear={onClearSavedView} />
-      <div className="panel overflow-hidden">
-        <table className="w-full border-collapse">
-          <thead className="table-head">
-            <tr>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Phone</th>
-              <th className="px-4 py-3">Company</th>
-              <th className="px-4 py-3">Account</th>
-              <th className="px-4 py-3">Lead Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {contacts.map((contact) => {
-              const account = contact.account_id ? accountById.get(contact.account_id) : null;
-              return (
-                <tr key={contact.id} className="hover:bg-slate-50">
-                  <td className="table-cell font-semibold text-slate-900">
-                    <button
-                      className="font-semibold text-blue-700 hover:underline"
-                      onClick={() => onOpenContact(contact)}
-                      type="button"
-                    >
-                      {contact.name}
-                    </button>
-                  </td>
-                  <td className="table-cell">{contact.email || ''}</td>
-                  <td className="table-cell">{contact.phone || ''}</td>
-                  <td className="table-cell">{contact.company || ''}</td>
-                  <td className="table-cell">
-                    {account && (
-                      <button className="font-semibold text-blue-700 hover:underline" onClick={() => onOpenAccount(account.id)} type="button">
-                        {account.name}
-                      </button>
-                    )}
-                  </td>
-                  <td className="table-cell">
-                    <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">{Number(contact.lead_score || 0).toFixed(1)}</span>
-                  </td>
-                </tr>
-              );
-            })}
-            {contacts.length === 0 && (
-              <tr>
-                <td className="px-4 py-10 text-center text-sm text-slate-500" colSpan={6}>
-                  No contacts yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
-
-function ContactDetailView({
-  contact,
-  onBack,
-  onEdit,
-  onDelete,
-}: {
-  contact: Contact;
-  onBack: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <>
-      <SectionHeader
-        title={contact.name}
-        action={
-          <div className="flex gap-2">
-            <button className="secondary-button" onClick={onBack} type="button">
-              <ArrowLeft size={16} aria-hidden="true" />
-              Back
-            </button>
-            <button className="secondary-button" onClick={onEdit} type="button">
-              <Pencil size={16} aria-hidden="true" />
-              Edit
-            </button>
-            <button className="danger-button" onClick={onDelete} type="button">
-              <Trash2 size={16} aria-hidden="true" />
-              Delete
-            </button>
-          </div>
-        }
-      />
-      <div className="panel p-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            ['Email', contact.email],
-            ['Phone', contact.phone],
-            ['Company', contact.company],
-            ['Lead Score', Number(contact.lead_score || 0).toFixed(1)],
-          ].map(([label, value]) => (
-            <div key={label as string}>
-              <div className="text-xs font-bold uppercase text-slate-500">{label as string}</div>
-              <div className="mt-1 text-sm text-slate-800">{(value as string) || 'Not set'}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
 function AccountsView({
   account,
   accounts,
@@ -1099,79 +946,6 @@ function StatsView({ stats }: { stats: StatsData | null }) {
   );
 }
 
-function ContactModal({ accounts, onClose, onSubmit }: { accounts: Account[]; onClose: () => void; onSubmit: (body: Partial<Contact> & { name: string }) => Promise<void> }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [company, setCompany] = useState('');
-  const [accountId, setAccountId] = useState('');
-  return (
-    <ModalShell title="New Contact" onClose={onClose}>
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const body: Partial<Contact> & { name: string } = { name: name.trim() };
-          if (email.trim()) body.email = email.trim();
-          if (phone.trim()) body.phone = phone.trim();
-          if (company.trim()) body.company = company.trim();
-          if (accountId) body.account_id = Number(accountId);
-          void onSubmit(body);
-        }}
-      >
-        <TextField label="Name" value={name} onChange={setName} required />
-        <TextField label="Email" value={email} onChange={setEmail} type="email" />
-        <TextField label="Phone" value={phone} onChange={setPhone} />
-        <TextField label="Company" value={company} onChange={setCompany} />
-        <label className="block">
-          <span className="field-label">Account</span>
-          <select className="field-input" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
-            <option value="">None</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <ModalActions onClose={onClose} submitLabel="Create" />
-      </form>
-    </ModalShell>
-  );
-}
-
-function ContactEditModal({
-  contact,
-  onClose,
-  onSubmit,
-}: {
-  contact: Contact;
-  onClose: () => void;
-  onSubmit: (body: Partial<Contact>) => Promise<void>;
-}) {
-  const [name, setName] = useState(contact.name);
-  const [email, setEmail] = useState(contact.email ?? '');
-  const [phone, setPhone] = useState(contact.phone ?? '');
-  const [company, setCompany] = useState(contact.company ?? '');
-  return (
-    <ModalShell title="Edit Contact" onClose={onClose}>
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onSubmit({ name: name.trim(), email: email.trim() || undefined, phone: phone.trim() || undefined, company: company.trim() || undefined });
-        }}
-      >
-        <TextField label="Name" value={name} onChange={setName} required />
-        <TextField label="Email" value={email} onChange={setEmail} type="email" />
-        <TextField label="Phone" value={phone} onChange={setPhone} />
-        <TextField label="Company" value={company} onChange={setCompany} />
-        <ModalActions onClose={onClose} submitLabel="Save" />
-      </form>
-    </ModalShell>
-  );
-}
-
 function AccountModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (body: Partial<Account> & { name: string }) => Promise<void> }) {
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
@@ -1268,93 +1042,4 @@ function ActivityModal({
   );
 }
 
-function ImportModal({
-  onClose,
-  onSuccess,
-}: {
-  onClose: () => void;
-  onSuccess: (count: number) => void;
-}) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [fileName, setFileName] = useState('');
-  const [result, setResult] = useState<{ imported: number; errors: { row: number; reason: string }[] } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    const file = fileRef.current?.files?.[0];
-    if (!file) { setError('Please select a CSV file'); return; }
-    setBusy(true);
-    setError('');
-    try {
-      const csv = await file.text();
-      const res = await apiFetch('/contacts/import', {
-        method: 'POST',
-        body: JSON.stringify({ csv }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.detail || 'Import failed');
-        return;
-      }
-      setResult(data);
-      if (data.errors?.length === 0) {
-        onSuccess(data.imported);
-      }
-    } catch {
-      setError('Import failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (result) {
-    return (
-      <ModalShell title="Import Complete" onClose={onClose}>
-        <div className="space-y-3">
-          <p className="text-sm text-slate-700">
-            Imported {result.imported} contact{result.imported !== 1 ? 's' : ''}
-            {result.errors.length > 0 ? ` with ${result.errors.length} error${result.errors.length !== 1 ? 's' : ''}` : ''}.
-          </p>
-          {result.errors.length > 0 && (
-            <ul className="space-y-1 text-xs text-red-600">
-              {result.errors.map((e) => (
-                <li key={e.row}>Row {e.row}: {e.reason}</li>
-              ))}
-            </ul>
-          )}
-          <div className="flex justify-end pt-2">
-            <button className="primary-button" onClick={onClose} type="button">Close</button>
-          </div>
-        </div>
-      </ModalShell>
-    );
-  }
-
-  return (
-    <ModalShell title="Import Contacts" onClose={onClose}>
-      <form className="space-y-4" onSubmit={(e) => void handleSubmit(e)}>
-        <div>
-          <p className="text-sm text-slate-600 mb-3">
-            Upload a CSV file with columns: name, email, phone, company.
-          </p>
-          <label className="block">
-            <span className="field-label">CSV File</span>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-700"
-              onChange={(e) => setFileName(e.target.files?.[0]?.name ?? '')}
-            />
-          </label>
-          {fileName && <p className="mt-1 text-xs text-slate-500">Selected: {fileName}</p>}
-        </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <ModalActions onClose={onClose} submitLabel={busy ? 'Importing…' : 'Import'} />
-      </form>
-    </ModalShell>
-  );
-}
 
