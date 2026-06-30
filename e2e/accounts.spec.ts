@@ -143,7 +143,7 @@ test.describe('Accounts CRUD', () => {
     }
   });
 
-  test('edit account — stub Edit button is visible in account detail view', async ({ page, request }) => {
+  test('edit account — Edit button opens AccountEditModal', async ({ page, request }) => {
     await loginAndWait(page);
     const tok = await bearerToken(page);
     const createRes = await request.post('/accounts', {
@@ -158,8 +158,8 @@ test.describe('Accounts CRUD', () => {
       await page.getByRole('button', { name: 'Edit Stub Account' }).first().click();
       await expect(page.getByRole('heading', { name: 'Edit Stub Account' })).toBeVisible({ timeout: 5_000 });
 
-      // Stub Edit button is present in the DOM (disabled — full form is a follow-up goal)
-      await expect(page.getByRole('button', { name: /^edit$/i })).toBeVisible({ timeout: 3_000 });
+      await page.getByRole('button', { name: /^edit$/i }).click();
+      await expect(page.getByRole('heading', { name: 'Edit Account' })).toBeVisible({ timeout: 3_000 });
     } finally {
       await request.delete(`/accounts/${account.id}`, { headers: auth(tok) });
     }

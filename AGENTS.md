@@ -77,7 +77,7 @@ The 5 `test.fixme` items remain as skipped defect markers for UI gaps:
 | 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | In contacts.spec.ts; full CRUD covered by 'contacts - detail' |
 | 2 | ✅ Fixed | Deals CRUD › create deal via modal — appears on kanban | `POST /deals` now sets `stage_id` to first pipeline stage |
 | 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | In pipeline.spec.ts; full CRUD covered by 'deals - detail' |
-| 4 | ✅ Done | Accounts CRUD › edit account | AccountEditModal implemented; Edit button in detail header opens modal (name, notes, address fields; diff-only PATCH); note: `notes` is frontend-only until backend adds the column |
+| 4 | ✅ Done | Accounts CRUD › edit account | AccountEditModal wired into AppModals + App shell; Edit button in AccountDetailView opens modal (name, notes, address fields; diff-only PATCH); e2e now clicks Edit and asserts modal heading; note: `notes` is frontend-only until backend adds the column |
 | 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | ✅ Activities tab added to SPA; activities.spec.ts covers it |
 | 6 | `test.fixme` | Import › import UI trigger [UI gap] | ✅ Import CSV button added; contacts.spec.ts covers it |
 | 7 | `test.fixme` | Export › export UI trigger [UI gap] | ✅ Export CSV button added; contacts.spec.ts covers it |
