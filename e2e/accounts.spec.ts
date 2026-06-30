@@ -143,7 +143,7 @@ test.describe('Accounts CRUD', () => {
     }
   });
 
-  test('edit account — Edit button opens AccountEditModal', async ({ page, request }) => {
+  test('edit account — update name and verify on detail page', async ({ page, request }) => {
     await loginAndWait(page);
     const tok = await bearerToken(page);
     const createRes = await request.post('/accounts', {
@@ -158,8 +158,16 @@ test.describe('Accounts CRUD', () => {
       await page.getByRole('button', { name: 'Edit Stub Account' }).first().click();
       await expect(page.getByRole('heading', { name: 'Edit Stub Account' })).toBeVisible({ timeout: 5_000 });
 
+      // Open edit modal
       await page.getByRole('button', { name: /^edit$/i }).click();
       await expect(page.getByRole('heading', { name: 'Edit Account' })).toBeVisible({ timeout: 3_000 });
+
+      // Clear name and type a new one, then save
+      await page.getByLabel('Name').fill('Renamed Account');
+      await page.getByRole('button', { name: 'Save' }).click();
+
+      // Updated name appears in detail view without a page reload
+      await expect(page.getByRole('heading', { name: 'Renamed Account' })).toBeVisible({ timeout: 5_000 });
     } finally {
       await request.delete(`/accounts/${account.id}`, { headers: auth(tok) });
     }
