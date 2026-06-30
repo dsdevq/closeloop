@@ -19,6 +19,7 @@ class AccountCreate(BaseModel):
     website: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class AccountUpdate(BaseModel):
@@ -28,6 +29,7 @@ class AccountUpdate(BaseModel):
     website: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    notes: Optional[str] = None
 
 
 def _to_out(a: Account, contact_count: int = 0) -> dict:
@@ -39,6 +41,7 @@ def _to_out(a: Account, contact_count: int = 0) -> dict:
         "website": a.website,
         "phone": a.phone,
         "address": a.address,
+        "notes": a.notes,
         "owner_id": a.owner_id,
         "contact_count": contact_count,
         "created_at": a.created_at,
@@ -67,6 +70,7 @@ def create_account(
         website=body.website,
         phone=body.phone,
         address=body.address,
+        notes=body.notes,
         owner_id=current_user.id,
         created_at=now,
         updated_at=now,

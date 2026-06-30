@@ -68,6 +68,13 @@ def _run_migrations():
             except Exception:
                 conn.rollback()
 
+        # v2.1 — notes on accounts
+        try:
+            conn.execute(text("ALTER TABLE accounts ADD COLUMN notes TEXT"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
 
 def _seed_and_backfill():
     db = SessionLocal()
