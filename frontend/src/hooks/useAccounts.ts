@@ -29,7 +29,11 @@ export function useAccounts(showToast: (msg: string) => void) {
 
   async function updateAccount(id: number, body: Partial<Account>) {
     const res = await apiFetch(`/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
-    if (!res.ok) { showToast('Failed to update account'); return; }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToast((err as { detail?: string }).detail ?? 'Failed to update account');
+      return;
+    }
     const updated = await res.json();
     setAccounts((prev) => prev.map((a) => (a.id === id ? updated : a)));
     setSelectedAccount(updated);
