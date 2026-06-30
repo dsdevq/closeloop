@@ -31,8 +31,9 @@ export function App() {
     dealToEdit, setDealToEdit, activityToEdit, setActivityToEdit,
     showNewActivity, setShowNewActivity, showImportModal, setShowImportModal,
     toast, createDeal, updateDeal, deleteDeal, moveDeal,
-    createContact, updateContact, deleteContact, createAccount, deleteAccount,
+    createContact, updateContact, deleteContact, createAccount, updateAccount, deleteAccount,
     createActivity, updateActivity, deleteActivity,
+    isEditModalOpen, openAccountEdit, closeAccountEdit,
     dismissReminder, applySavedView, exportContacts, handleImportSuccess,
   } = useAppState();
 
@@ -114,6 +115,7 @@ export function App() {
                 setSelectedAccountId(null);
                 setSelectedAccount(null);
               }}
+              onEdit={openAccountEdit}
               onDelete={() => void deleteAccount(selectedAccount.id)}
             />
           ) : (
@@ -151,6 +153,8 @@ export function App() {
         accounts={accounts}
         modal={modal}
         onCloseModal={() => setModal(null)}
+        accountToEdit={isEditModalOpen ? selectedAccount : null}
+        onCloseAccountEdit={closeAccountEdit}
         contactToEdit={contactToEdit}
         onCloseContactEdit={() => setContactToEdit(null)}
         dealToEdit={dealToEdit}
@@ -167,6 +171,7 @@ export function App() {
         onCreateAccount={createAccount}
         onCreateActivity={createActivity}
         onUpdateActivity={updateActivity}
+        onUpdateAccount={updateAccount}
         onUpdateContact={updateContact}
         onUpdateDeal={updateDeal}
       />

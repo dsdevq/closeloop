@@ -5,6 +5,7 @@ import { ContactModal } from '../features/contacts/ContactModal';
 import { ContactEditModal } from '../features/contacts/ContactEditModal';
 import { ImportModal } from '../features/contacts/ImportModal';
 import { AccountModal } from '../features/accounts/AccountModal';
+import { AccountEditModal } from '../features/accounts/AccountEditModal';
 import { ActivityFormModal } from '../features/activities/ActivityFormModal';
 
 interface AppModalsProps {
@@ -12,6 +13,8 @@ interface AppModalsProps {
   accounts: Account[];
   modal: 'deal' | 'contact' | 'account' | null;
   onCloseModal: () => void;
+  accountToEdit: Account | null;
+  onCloseAccountEdit: () => void;
   contactToEdit: Contact | null;
   onCloseContactEdit: () => void;
   dealToEdit: Deal | null;
@@ -28,19 +31,21 @@ interface AppModalsProps {
   onCreateAccount: (body: Partial<Account> & { name: string }) => Promise<void>;
   onCreateActivity: (body: { title: string; type: string; body?: string; contact_id?: number }) => Promise<void>;
   onUpdateActivity: (id: number, body: Partial<Activity>) => Promise<void>;
+  onUpdateAccount: (id: number, body: Partial<Account>) => Promise<void>;
   onUpdateContact: (id: number, body: Partial<Contact>) => Promise<void>;
   onUpdateDeal: (id: number, body: Partial<Deal>) => Promise<void>;
 }
 
 export function AppModals({
   contacts, accounts, modal, onCloseModal,
+  accountToEdit, onCloseAccountEdit,
   contactToEdit, onCloseContactEdit,
   dealToEdit, onCloseDealEdit,
   activityToEdit, onCloseActivityEdit,
   showNewActivity, onCloseNewActivity,
   showImportModal, onImportSuccess, onCloseImportModal,
   onCreateDeal, onCreateContact, onCreateAccount, onCreateActivity,
-  onUpdateActivity, onUpdateContact, onUpdateDeal,
+  onUpdateActivity, onUpdateAccount, onUpdateContact, onUpdateDeal,
 }: AppModalsProps) {
   return (
     <>
@@ -77,6 +82,13 @@ export function AppModals({
           contacts={contacts}
           onClose={onCloseActivityEdit}
           onSubmit={async (body) => { await onUpdateActivity(activityToEdit.id, body); onCloseActivityEdit(); }}
+        />
+      )}
+      {accountToEdit && (
+        <AccountEditModal
+          account={accountToEdit}
+          onClose={onCloseAccountEdit}
+          onSubmit={(body) => void onUpdateAccount(accountToEdit.id, body)}
         />
       )}
       {contactToEdit && (

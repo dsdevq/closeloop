@@ -43,6 +43,7 @@ export type Account = {
   website?: string | null;
   phone?: string | null;
   address?: string | null;
+  notes?: string | null;
   owner_id?: number | null;
   contact_count?: number | null;
   contacts?: Contact[];

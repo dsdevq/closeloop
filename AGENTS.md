@@ -77,7 +77,7 @@ The 5 `test.fixme` items remain as skipped defect markers for UI gaps:
 | 1 | `test.fixme` | Contacts CRUD › contact detail/edit UI [UI gap] | In contacts.spec.ts; full CRUD covered by 'contacts - detail' |
 | 2 | ✅ Fixed | Deals CRUD › create deal via modal — appears on kanban | `POST /deals` now sets `stage_id` to first pipeline stage |
 | 3 | `test.fixme` | Deals CRUD › deal detail/edit UI [UI gap] | In pipeline.spec.ts; full CRUD covered by 'deals - detail' |
-| 4 | ✅ Stub | Accounts CRUD › edit account [stub Edit button visible] | Disabled Edit button added to account detail header; full form is a follow-up goal |
+| 4 | ✅ Done | Accounts CRUD › edit account | AccountEditModal implemented; Edit button in detail header opens modal (name, notes, address fields; diff-only PATCH); note: `notes` is frontend-only until backend adds the column |
 | 5 | `test.fixme` | Activities CRUD › Activities nav tab [UI gap] | ✅ Activities tab added to SPA; activities.spec.ts covers it |
 | 6 | `test.fixme` | Import › import UI trigger [UI gap] | ✅ Import CSV button added; contacts.spec.ts covers it |
 | 7 | `test.fixme` | Export › export UI trigger [UI gap] | ✅ Export CSV button added; contacts.spec.ts covers it |
@@ -209,7 +209,7 @@ playwright.config.ts  — Playwright config (Chromium headless, port 8088, webSe
 - **`frontend/src/features/`** — one subdirectory per product area; each file exports one named export matching the filename; imports only from `../../types`, `../../lib/*`, and `../../components/ui/*`:
   - `pipeline/` — kanban board with drag-and-drop stage moves (`PipelineView`, `DealCard`, `DealDetailView`, `DealModal`, `DealEditModal`; `PipelineView` owns `stagePalette`)
   - `contacts/` — contacts list + detail + CSV import/export (`ContactsView`, `ContactDetailView`, `ContactModal`, `ContactEditModal`, `ImportModal`)
-  - `accounts/` — accounts list + detail + create modal (`AccountsView`, `AccountDetailView`, `AccountModal`)
+  - `accounts/` — accounts list + detail + create/edit modals (`AccountsView`, `AccountDetailView`, `AccountModal`, `AccountEditModal`)
   - `activities/` — activities list + detail (`ActivitiesView`, `ActivityDetailView`, `ActivityFormModal`; `ActivityFormModal` owns `ACTIVITY_TYPES` const)
   - `today/` — reminders queue with dismiss action (`TodayView`)
   - `stats/` — aggregate metrics dashboard (`StatsView`)
