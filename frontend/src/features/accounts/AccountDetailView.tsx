@@ -5,10 +5,12 @@ import { SectionHeader } from '../../components/ui/SectionHeader';
 export function AccountDetailView({
   account,
   onBack,
+  onEdit,
   onDelete,
 }: {
   account: Account;
   onBack: () => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -21,8 +23,7 @@ export function AccountDetailView({
               <ArrowLeft size={16} aria-hidden="true" />
               Back
             </button>
-            {/* Account edit form is a follow-up goal — PATCH /accounts/:id exists but the UI form is not yet implemented */}
-            <button className="secondary-button" disabled type="button">
+            <button className="secondary-button" onClick={onEdit} type="button">
               <Pencil size={16} aria-hidden="true" />
               Edit
             </button>

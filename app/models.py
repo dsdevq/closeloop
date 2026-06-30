@@ -40,6 +40,7 @@ class Account(Base):
     website = Column(String)
     phone = Column(String)
     address = Column(String)
+    notes = Column(String, nullable=True)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(String, nullable=False)
     updated_at = Column(String, nullable=False)

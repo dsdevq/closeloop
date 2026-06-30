@@ -6,6 +6,7 @@ export function useAccounts(showToast: (msg: string) => void) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedAccountId) return;
@@ -22,6 +23,22 @@ export function useAccounts(showToast: (msg: string) => void) {
     const res = await apiFetch('/accounts');
     if (res.ok) setAccounts(await res.json());
   }, []);
+
+  function openAccountEdit() { setIsEditModalOpen(true); }
+  function closeAccountEdit() { setIsEditModalOpen(false); }
+
+  async function updateAccount(id: number, body: Partial<Account>) {
+    const res = await apiFetch(`/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToast((err as { detail?: string }).detail ?? 'Failed to update account');
+      return;
+    }
+    const updated = await res.json();
+    setAccounts((prev) => prev.map((a) => (a.id === id ? updated : a)));
+    setSelectedAccount(updated);
+    closeAccountEdit();
+  }
 
   async function createAccount(body: Partial<Account> & { name: string }) {
     const res = await apiFetch('/accounts', { method: 'POST', body: JSON.stringify(body) });
@@ -43,6 +60,7 @@ export function useAccounts(showToast: (msg: string) => void) {
     accounts,
     selectedAccountId, setSelectedAccountId,
     selectedAccount, setSelectedAccount,
-    loadAccounts, createAccount, deleteAccount,
+    isEditModalOpen, openAccountEdit, closeAccountEdit,
+    loadAccounts, createAccount, updateAccount, deleteAccount,
   };
 }
