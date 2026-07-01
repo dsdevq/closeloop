@@ -4,9 +4,13 @@ import type { InsightsLeaderboardRow } from '../../types';
 import { BarChart } from './charts/BarChart';
 import type { BarChartPoint } from './charts/BarChart';
 
+function repLabel(row: InsightsLeaderboardRow): string {
+  return row.owner_name ?? `Rep ${row.owner_id}`;
+}
+
 function leaderboardToBarPoints(data: InsightsLeaderboardRow[]): BarChartPoint[] {
   return data.map((row) => ({
-    label: `Rep ${row.owner_id}`,
+    label: repLabel(row),
     value: row.revenue,
   }));
 }
@@ -74,7 +78,7 @@ export function RepLeaderboard() {
                 <tbody>
                   {data.map((row) => (
                     <tr key={row.owner_id} className="border-t border-slate-100">
-                      <td className="py-1 pr-3 text-slate-700">Rep {row.owner_id}</td>
+                      <td className="py-1 pr-3 text-slate-700">{repLabel(row)}</td>
                       <td className="py-1 pr-3 text-right font-medium text-slate-900">
                         {formatRevenue(row.revenue)}
                       </td>

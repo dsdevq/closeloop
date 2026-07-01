@@ -13,16 +13,22 @@ _VALID_WINDOWS = frozenset({30, 90, 365})
 
 
 def _deal_dicts(db: Session) -> list[dict]:
+    rows = (
+        db.query(Deal, User.full_name)
+        .outerjoin(User, Deal.owner_id == User.id)
+        .all()
+    )
     return [
         {
             "stage": d.stage,
             "value": d.value,
             "owner_id": d.owner_id,
+            "owner_name": name if name else None,
             "contact_id": d.contact_id,
             "created_at": d.created_at,
             "closed_at": d.closed_at,
         }
-        for d in db.query(Deal).all()
+        for d, name in rows
     ]
 
 

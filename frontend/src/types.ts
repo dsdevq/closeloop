@@ -100,6 +100,7 @@ export type InsightsFunnel = Record<string, InsightsFunnelStage>;
 
 export type InsightsLeaderboardRow = {
   owner_id: number;
+  owner_name: string | null;
   revenue: number;
   deals_closed: number;
   avg_cycle_days: number | null;
