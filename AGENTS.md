@@ -44,7 +44,7 @@ A self-contained CRM: **Python + FastAPI + SQLite** backend, **React + Vite + Ta
 
 M1–M5 + v1 (auth) + v2 (accounts + pipeline stages) all **✅ Done**. See [docs/product/roadmap.md](docs/product/roadmap.md).
 
-**In progress:** Insights dashboard — backend `/insights/{trends,funnel,leaderboard,cohorts}` endpoints done (#28–#29); frontend `features/insights/` scaffolded (InsightsView + 4 stub sections + SVG chart primitives); tab wiring into AppHeader is next once section internals are implemented.
+**In progress:** Insights dashboard — all four sections (Trends, Funnel, Leaderboard, SourceCohorts) are now real and wired in `features/insights/`. Each section self-fetches via `apiFetch` with the same useState+useEffect pattern. Next step: wire the Insights tab into AppHeader (intentionally deferred until all sections landed).
 
 ## When you learn something durable
 
