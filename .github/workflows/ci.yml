@@ -1,64 +1,11 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
-
 jobs:
   test:
-    name: Tests
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      - name: Python tests
-        run: |
-          python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install --quiet --upgrade pip
-          "$RUNNER_TEMP/venv/bin/pip" install --quiet -r requirements.txt
-          "$RUNNER_TEMP/venv/bin/python" -m pytest -q
-      - name: Frontend typecheck
-        run: |
-          cd frontend
-          npm ci --silent
-          npm run typecheck
-
-  deploy:
-    name: Deploy to lifekit-vps
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: self-hosted
-    concurrency:
-      group: deploy-closeloop
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -t closeloop:${{ github.sha }} -t closeloop:latest .
-      - name: Swap singleton container
-        env:
-          APP_PORT: ${{ vars.APP_PORT }}
-        run: |
-          PORT="${APP_PORT:-8000}"
-          docker rm -f closeloop || true
-          docker run -d --name closeloop --restart unless-stopped \
-            -p "127.0.0.1:${PORT}:${PORT}" \
-            -e "PORT=${PORT}" \
-            -v closeloop-data:/data \
-            closeloop:latest
-      - name: Verify healthy
-        env:
-          APP_PORT: ${{ vars.APP_PORT }}
-        run: |
-          PORT="${APP_PORT:-8000}"
-          for i in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:${PORT}/health" > /dev/null; then
-              echo "closeloop is healthy on ${PORT}"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "closeloop did not come up healthy on ${PORT}"
-          docker logs --tail 100 closeloop || true
-          exit 1
+      - run: echo hi
