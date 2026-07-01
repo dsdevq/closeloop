@@ -1,13 +1,10 @@
 import { SectionHeader } from '../../components/ui/SectionHeader';
-import { useInsights } from './useInsights';
 import { TrendsSection } from './TrendsSection';
 import { ConversionFunnel } from './ConversionFunnel';
 import { RepLeaderboard } from './RepLeaderboard';
 import { SourceCohorts } from './SourceCohorts';
 
 export function InsightsView() {
-  const { cohorts } = useInsights();
-
   return (
     <>
       <SectionHeader title="Insights" />
@@ -15,7 +12,7 @@ export function InsightsView() {
         <TrendsSection />
         <ConversionFunnel />
         <RepLeaderboard />
-        <SourceCohorts data={cohorts} />
+        <SourceCohorts />
       </div>
     </>
   );
