@@ -11,6 +11,7 @@ import { ActivitiesView } from './features/activities/ActivitiesView';
 import { ActivityDetailView } from './features/activities/ActivityDetailView';
 import { TodayView } from './features/today/TodayView';
 import { StatsView } from './features/stats/StatsView';
+import { InsightsView } from './features/insights/InsightsView';
 import { LoginView } from './features/auth/LoginView';
 
 function isLoginPath() {
@@ -146,6 +147,7 @@ export function App() {
         )}
         {activeTab === 'today' && <TodayView reminders={today} onDismiss={dismissReminder} />}
         {activeTab === 'stats' && <StatsView stats={stats} />}
+        {activeTab === 'insights' && <InsightsView />}
       </main>
 
       <AppModals

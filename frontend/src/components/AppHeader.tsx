@@ -1,4 +1,4 @@
-import { BarChart3, Bell, Building2, Calendar, ContactRound, LogOut, RefreshCw, UserRound } from 'lucide-react';
+import { BarChart3, Bell, Building2, Calendar, ContactRound, LogOut, RefreshCw, TrendingUp, UserRound } from 'lucide-react';
 import type { Tab, User } from '../types';
 
 export function AppHeader({ activeTab, onTabChange, user, onLogout }: {
@@ -25,6 +25,7 @@ export function AppHeader({ activeTab, onTabChange, user, onLogout }: {
             ['activities', Calendar, 'Activities'],
             ['today', Bell, 'Today'],
             ['stats', BarChart3, 'Stats'],
+            ['insights', TrendingUp, 'Insights'],
           ] as const).map(([tab, Icon, label]) => (
             <button
               key={tab}
