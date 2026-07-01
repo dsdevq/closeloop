@@ -1,3 +1,11 @@
+---
+title: Product Requirements Document
+status: stable
+owner: "@dsdevq"
+last_reviewed: 2026-07-01
+tags: [product, prd, contract]
+---
+
 # CloseLoop — PRD
 
 > This is the product contract for CloseLoop, authored at kickoff. It is the spec the build is judged against. Do not change it without explicit instruction from the owner.

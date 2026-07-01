@@ -1,3 +1,11 @@
+---
+title: Roadmap + milestones
+status: stable
+owner: "@dsdevq"
+last_reviewed: 2026-07-01
+tags: [product, roadmap, backlog]
+---
+
 # CloseLoop — Backlog
 
 ## Milestone status

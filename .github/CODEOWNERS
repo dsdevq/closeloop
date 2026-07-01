@@ -1,0 +1,23 @@
+# CODEOWNERS — auto-request review from the accountable steward.
+#
+# When code changes and no doc changes, the doc's owner still gets a review
+# ping — if the code drift makes the doc wrong, they have first shot at fixing
+# it (or telling the PR author to fix it).
+#
+# Format: <path>  <owner> [<owner>...]
+# Longest-matching-prefix wins.
+
+# Docs — the whole tree is stewarded per-page via frontmatter `owner:` fields.
+# CODEOWNERS is coarse; frontmatter is fine-grained.
+docs/                                      @dsdevq
+AGENTS.md                                  @dsdevq
+
+# Code — high-signal paths get named owners so the doc-owner sees drift PRs
+# before they land.
+app/core/                                  @dsdevq  # ADR-0001: pure core module — invariant enforcement
+app/main.py                                @dsdevq  # AGENTS.md: router registration order rule
+frontend/src/lib/api.ts                    @dsdevq  # AGENTS.md: apiFetch discipline
+scripts/docs_lint.py                       @dsdevq  # docs rot-prevention gate
+scripts/verify.sh                          @dsdevq  # PR gate
+.github/workflows/                         @dsdevq  # CI shape
+Dockerfile                                 @dsdevq  # deploy shape

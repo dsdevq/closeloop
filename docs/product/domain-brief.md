@@ -1,3 +1,11 @@
+---
+title: CRM domain brief + v1-v6 thinking
+status: stable
+owner: "@dsdevq"
+last_reviewed: 2026-07-01
+tags: [product, domain, crm]
+---
+
 # CloseLoop — CRM Domain Reference & Roadmap
 
 > **Audience:** Denys (product owner) and AI agents working on CloseLoop.
