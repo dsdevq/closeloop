@@ -34,6 +34,8 @@ Every non-trivial design decision made in CloseLoop, one file per decision, numb
 | [0020](0020-stage-delete-409-conflict.md) | Stage DELETE returns 409 when deals exist | v2, api |
 | [0021](0021-manager-role-manages-stages.md) | Manager role can manage pipeline stages | v2, auth, roles |
 | [0022](0022-tests-no-auto-seed-stages.md) | Tests do not auto-seed pipeline stages | v2, testing |
+| [0023](0023-insights-python-side-aggregation.md) | Insights aggregation computed in pure Python, not SQL | insights, architecture, core, testing |
+| [0024](0024-insights-svg-chart-primitives.md) | Insights charts are hand-rolled SVG primitives, no charting library | insights, frontend, charts, dependencies |
 
 ## Superseded (historical)
 
