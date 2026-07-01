@@ -6,7 +6,7 @@ import { RepLeaderboard } from './RepLeaderboard';
 import { SourceCohorts } from './SourceCohorts';
 
 export function InsightsView() {
-  const { leaderboard, cohorts } = useInsights();
+  const { cohorts } = useInsights();
 
   return (
     <>
@@ -14,7 +14,7 @@ export function InsightsView() {
       <div className="grid gap-4 lg:grid-cols-2">
         <TrendsSection />
         <ConversionFunnel />
-        <RepLeaderboard data={leaderboard} />
+        <RepLeaderboard />
         <SourceCohorts data={cohorts} />
       </div>
     </>
