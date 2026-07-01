@@ -73,6 +73,14 @@ One subdirectory per product area; each file exports one named export matching t
 | `today/` | `TodayView` | reminders queue with dismiss |
 | `stats/` | `StatsView` | aggregate metrics |
 | `auth/` | `LoginView` | no hardcoded credential defaults |
+| `insights/` | `InsightsView`, `TrendsSection`, `ConversionFunnel`, `RepLeaderboard`, `SourceCohorts`, `useInsights`, `charts/BarChart`, `charts/LineChart` | self-contained hook; tab not yet wired into AppHeader — see BACKLOG |
+
+### Chart primitives (`features/insights/charts/`)
+
+Hand-rolled SVG charts — no external charting library (product invariant). Each takes typed `data: Point[]` props plus optional `height`, `color`, and `formatValue`. Render via `viewBox` + `width="100%"` for fluid scaling.
+
+- `BarChart` — vertical bars; expects `BarChartPoint[]` (`{label, value}`)
+- `LineChart` — line with optional area fill; expects `LineChartPoint[]` (`{label, value}`); prop `filled?: boolean` (default `true`)
 
 ### `frontend/src/hooks/useAppState.ts`
 

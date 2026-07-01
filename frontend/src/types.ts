@@ -87,3 +87,27 @@ export type StatsData = {
   outbox_queued: number;
   deals_by_stage?: Record<string, number>;
 };
+
+// Insights — mirrors /insights/* API response shapes
+
+export type InsightsTrends = Record<string, number>;
+
+export type InsightsFunnelStage = {
+  conversion_rate: number;
+  avg_time_in_stage_days: number | null;
+};
+export type InsightsFunnel = Record<string, InsightsFunnelStage>;
+
+export type InsightsLeaderboardRow = {
+  owner_id: number;
+  revenue: number;
+  deals_closed: number;
+  avg_cycle_days: number | null;
+};
+
+export type InsightsCohortSource = {
+  deal_count: number;
+  avg_deal_value: number;
+  win_rate: number;
+};
+export type InsightsCohorts = Record<string, InsightsCohortSource>;
