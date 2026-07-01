@@ -27,6 +27,7 @@ app/
     filter_ast.py   — Pure filter AST: parse_filter + evaluate_filter; ops incl. `in` [M4+Post]
     velocity.py     — time_in_stage_hours, cycle_time_hours, avg_days_per_stage, is_deal_rotting [Post]
     recurrence.py   — RRULE-lite expand_rrule (daily/weekly/monthly)          [Post]
+    insights.py     — trends, conversion_funnel, rep_leaderboard, source_cohorts [Post]
   routers/
     health.py       — GET /health
     contacts.py     — CRUD /contacts (+ lead-score, CSV export/import)        [M3+Post]
@@ -50,6 +51,7 @@ tests/
   test_core_filter_ast.py       — filter AST semantics + `in` op                 [M4+Post]
   test_core_velocity.py         — stage timing, cycle time, rotting detection     [Post]
   test_core_recurrence.py       — RRULE-lite expand_rrule                         [Post]
+  test_core_insights.py         — trends, funnel, rep leaderboard, source cohorts [Post]
   test_contacts.py
   test_deals.py                 — CRUD, transitions, rotting alerts                [Post]
   test_activities.py            — API tests + recurrence expand                   [M3+Post]
