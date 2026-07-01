@@ -44,7 +44,7 @@ A self-contained CRM: **Python + FastAPI + SQLite** backend, **React + Vite + Ta
 
 M1–M5 + v1 (auth) + v2 (accounts + pipeline stages) all **✅ Done**. See [docs/product/roadmap.md](docs/product/roadmap.md).
 
-**In progress:** Insights dashboard — all four sections (Trends, Funnel, Leaderboard, SourceCohorts) are now real and wired in `features/insights/`. Each section self-fetches via `apiFetch` with the same useState+useEffect pattern. Next step: wire the Insights tab into AppHeader (intentionally deferred until all sections landed).
+**Done:** Insights dashboard — all four sections (Trends, Funnel, Leaderboard, SourceCohorts) wired in `features/insights/`. Insights tab added to AppHeader and routed in App.tsx alongside Pipeline/Contacts/Accounts/Activities/Today/Stats. Visible to all roles (auth scoping handled server-side). Smoke e2e test in `e2e/insights.spec.ts`.
 
 ## When you learn something durable
 

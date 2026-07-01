@@ -1,4 +1,4 @@
-export type Tab = 'pipeline' | 'contacts' | 'accounts' | 'today' | 'stats' | 'activities';
+export type Tab = 'pipeline' | 'contacts' | 'accounts' | 'today' | 'stats' | 'activities' | 'insights';
 
 export type User = {
   id?: number;
