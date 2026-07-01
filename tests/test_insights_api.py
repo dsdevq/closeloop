@@ -221,9 +221,24 @@ def test_leaderboard_row_shape(ic):
     assert len(r.json()) >= 1
     row = r.json()[0]
     assert "owner_id" in row
+    assert "owner_name" in row
     assert "revenue" in row
     assert "deals_closed" in row
     assert "avg_cycle_days" in row
+
+
+def test_leaderboard_owner_name_joined_from_user(ic):
+    """owner_name must equal the User.full_name for the rep who owns the deal."""
+    client, headers, user_ids, _ = ic
+    cid = _make_contact(client, "NameJoin", "namejoin@x.com")
+    rep1_h = headers["rep1@t.com"]
+    _close_deal_as_won(client, cid, 500.0, rep1_h)
+
+    r = client.get("/insights/leaderboard")
+    assert r.status_code == 200
+    rows = r.json()
+    rep1_row = next(row for row in rows if row["owner_id"] == user_ids["rep1@t.com"])
+    assert rep1_row["owner_name"] == "Rep One"
 
 
 def test_leaderboard_admin_sees_all_reps(ic):

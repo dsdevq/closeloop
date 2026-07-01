@@ -25,6 +25,7 @@ def _deal(
     stage: str = "lead",
     value: float = 1000.0,
     owner_id: int | None = 1,
+    owner_name: str | None = None,
     contact_id: int = 1,
     created_at: datetime | None = None,
     closed_at: datetime | None = None,
@@ -34,6 +35,7 @@ def _deal(
         "stage": stage,
         "value": value,
         "owner_id": owner_id,
+        "owner_name": owner_name,
         "contact_id": contact_id,
         "created_at": created.isoformat(),
         "closed_at": closed_at.isoformat() if closed_at is not None else None,
@@ -308,6 +310,31 @@ class TestRepLeaderboard:
         assert by_owner[1]["deals_closed"] == 2
         assert by_owner[2]["revenue"] == pytest.approx(200.0)
         assert by_owner[2]["deals_closed"] == 1
+
+    def test_owner_name_present_in_every_row(self):
+        deals = [_deal(stage="won", owner_id=1, owner_name="Alice Jones")]
+        result = rep_leaderboard(deals)
+        assert len(result) == 1
+        assert "owner_name" in result[0]
+        assert result[0]["owner_name"] == "Alice Jones"
+
+    def test_owner_name_none_when_user_deleted(self):
+        """Deals whose owner has been deleted arrive with owner_name=None; row still appears."""
+        deals = [_deal(stage="won", owner_id=42, owner_name=None)]
+        result = rep_leaderboard(deals)
+        assert len(result) == 1
+        assert result[0]["owner_name"] is None
+
+    def test_owner_name_first_non_none_wins_across_multiple_deals(self):
+        """When multiple deals share an owner, the first non-None name is kept."""
+        deals = [
+            _deal(stage="won", owner_id=7, owner_name=None),
+            _deal(stage="won", owner_id=7, owner_name="Bob Smith"),
+            _deal(stage="won", owner_id=7, owner_name="Should Not Win"),
+        ]
+        result = rep_leaderboard(deals)
+        assert len(result) == 1
+        assert result[0]["owner_name"] == "Bob Smith"
 
 
 # ── source_cohorts ────────────────────────────────────────────────────────────

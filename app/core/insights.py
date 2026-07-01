@@ -129,6 +129,7 @@ def rep_leaderboard(
     revenue: dict[int, float] = {}
     deal_count: dict[int, int] = {}
     cycle_days: dict[int, list[float]] = {}
+    owner_names: dict[int, str | None] = {}
 
     for deal in deals:
         if deal.get("stage") != "won":
@@ -139,6 +140,9 @@ def rep_leaderboard(
         value = float(deal.get("value") or 0.0)
         revenue[owner_id] = revenue.get(owner_id, 0.0) + value
         deal_count[owner_id] = deal_count.get(owner_id, 0) + 1
+        # Prefer the first non-None name seen (covers deleted-user case where name is None)
+        if owner_names.get(owner_id) is None:
+            owner_names[owner_id] = deal.get("owner_name")
         created = _parse_naive(deal.get("created_at"))
         closed = _parse_naive(deal.get("closed_at"))
         if created is not None and closed is not None:
@@ -151,6 +155,7 @@ def rep_leaderboard(
         rows.append(
             {
                 "owner_id": owner_id,
+                "owner_name": owner_names.get(owner_id),
                 "revenue": revenue[owner_id],
                 "deals_closed": deal_count[owner_id],
                 "avg_cycle_days": sum(cd_list) / len(cd_list) if cd_list else None,

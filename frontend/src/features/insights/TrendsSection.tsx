@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../../lib/api';
 import type { InsightsTrends } from '../../types';
-import { LineChart } from './charts/LineChart';
-import type { LineChartPoint } from './charts/LineChart';
+import { BarChart } from './charts/BarChart';
+import type { BarChartPoint } from './charts/BarChart';
 
 const WINDOWS = [30, 90, 365] as const;
 type WindowDays = (typeof WINDOWS)[number];
 
 const STAGE_ORDER = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
 
-function trendsToPoints(data: InsightsTrends): LineChartPoint[] {
+function trendsToPoints(data: InsightsTrends): BarChartPoint[] {
   const entries = Object.entries(data);
   entries.sort(([a], [b]) => {
     const ai = STAGE_ORDER.indexOf(a);
@@ -81,7 +81,7 @@ export function TrendsSection() {
         </div>
       )}
 
-      {!loading && !error && <LineChart data={points} />}
+      {!loading && !error && <BarChart data={points} />}
     </div>
   );
 }
