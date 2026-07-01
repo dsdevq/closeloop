@@ -73,7 +73,7 @@ One subdirectory per product area; each file exports one named export matching t
 | `today/` | `TodayView` | reminders queue with dismiss |
 | `stats/` | `StatsView` | aggregate metrics |
 | `auth/` | `LoginView` | no hardcoded credential defaults |
-| `insights/` | `InsightsView`, `TrendsSection`, `ConversionFunnel`, `RepLeaderboard`, `SourceCohorts`, `useInsights`, `charts/BarChart`, `charts/LineChart` | self-contained hook; tab not yet wired into AppHeader — see BACKLOG |
+| `insights/` | `InsightsView`, `TrendsSection`, `ConversionFunnel`, `RepLeaderboard`, `SourceCohorts`, `charts/BarChart`, `charts/LineChart` | four self-contained sections; Insights tab wired into AppHeader |
 
 ### Chart primitives (`features/insights/charts/`)
 
@@ -90,8 +90,60 @@ Hand-rolled SVG charts — no external charting library (product invariant). Eac
 
 ## v2 shape (Accounts + Pipeline Stages)
 
-- Tabs: Pipeline, Contacts, Accounts, Activities, Today, Stats.
+- Tabs: Pipeline, Contacts, Accounts, Activities, Today, Stats, Insights.
 - Kanban loads stages dynamically from `GET /pipeline/stages`; drag-and-drop PATCHes `{ stage_id }` on the deal.
 - Contact name is a clickable button → `ContactDetailView`. Same shape for accounts, deals, activities.
 - CSV Import/Export buttons on ContactsView section header (Import: FileReader → JSON POST; Export: fetch → blob → `<a download>`).
 - Login stores access/refresh tokens + current user in localStorage.
+
+## Insights dashboard
+
+The Insights tab is a 2-column responsive grid (`lg:grid-cols-2`) of four self-contained section components, all rendered by `InsightsView`. It sits alongside the other tabs in the `AppHeader` tab bar; auth scoping is handled server-side.
+
+### Sections and their API endpoints
+
+| Section | Endpoint | Response type |
+|---------|----------|---------------|
+| `TrendsSection` | `GET /insights/trends?window_days={30\|90\|365}` | `InsightsTrends` (`Record<string, number>`) |
+| `ConversionFunnel` | `GET /insights/funnel` | `InsightsFunnel` (`Record<string, InsightsFunnelStage>`) |
+| `RepLeaderboard` | `GET /insights/leaderboard` | `InsightsLeaderboardRow[]` |
+| `SourceCohorts` | `GET /insights/cohorts` | `InsightsCohorts` (`Record<string, InsightsCohortSource>`) |
+
+All four Insights types live in `frontend/src/types.ts` under the `// Insights` comment block.
+
+### API-fetch / loading / error pattern
+
+All four sections share the same local-state shape — there is no shared hook:
+
+```tsx
+const [data, setData] = useState<T | null>(null);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState(false);
+
+useEffect(() => {
+  setLoading(true);
+  setError(false);
+  void apiFetch('/insights/…')
+    .then((res) => {
+      if (!res.ok) { setError(true); return undefined; }
+      return res.json() as Promise<T>;
+    })
+    .then((d) => { if (d !== undefined) setData(d); })
+    .finally(() => setLoading(false));
+}, [deps]);
+```
+
+Three render branches in each section:
+- **Loading** — `h-40` centered `text-slate-400` "Loading…"
+- **Error** — `h-40` centered `text-slate-400` error message
+- **Data** — `BarChart` or `LineChart` plus an optional detail table below
+
+New sections added to the Insights dashboard must follow this same pattern.
+
+### Window switcher (TrendsSection only)
+
+`TrendsSection` offers a 30 / 90 / 365-day window. `WINDOWS = [30, 90, 365] as const` drives the `WindowDays` type and the button group. The active button gets `bg-blue-600 text-white`; inactive buttons get `text-slate-500 hover:bg-slate-100`. The selected value is appended as `?window_days=N` on each fetch; changing the window re-triggers `useEffect`.
+
+### Stage and source ordering
+
+`TrendsSection` and `ConversionFunnel` define a local `STAGE_ORDER = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost']` and sort the API response `Record` by it before mapping to chart points (unknown stages sort last, alphabetically among themselves). `SourceCohorts` uses the same pattern with `SOURCE_ORDER = ['referral', 'inbound', 'outbound', 'event', 'other']`.
