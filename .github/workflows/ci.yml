@@ -10,18 +10,9 @@ jobs:
   # Every job runs on the closeloop self-hosted runner registered on
   # lifekit-vps — GitHub-hosted runners are billing-locked account-wide
   # (same constraint as devclaw + lifekit-stack).
-  docs:
-    name: Docs lint (frontmatter + links + ADR refs)
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-      - name: Lint docs tree
-        run: python3 scripts/docs_lint.py
-
   test:
     name: Tests
     runs-on: self-hosted
-    needs: docs
     concurrency:
       group: ci-${{ github.ref }}
       cancel-in-progress: true

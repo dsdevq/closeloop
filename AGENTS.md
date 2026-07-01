@@ -13,11 +13,12 @@ A self-contained CRM: **Python + FastAPI + SQLite** backend, **React + Vite + Ta
 3. **[docs/architecture/overview.md](docs/architecture/overview.md)** — layer map, data model, request lifecycle.
 4. **[docs/architecture/decisions/INDEX.md](docs/architecture/decisions/INDEX.md)** — 22 ADRs, one per non-trivial design call. Consult when your instinct disagrees with what's in the code.
 5. Task guides live under [docs/guides/](docs/guides/INDEX.md).
-6. Contributor guide (frontmatter, ADR/RFC process, rot management): [docs/README.md](docs/README.md).
+6. Contributor guide (frontmatter, ADR/RFC process, tree shape): [docs/README.md](docs/README.md).
+7. Behavioral skill for maintaining the tree: [.agent/skills/knowledge-tree.md](.agent/skills/knowledge-tree.md) — devclaw runners auto-load this on every task; read it if you're contributing by hand.
 
 ## Load-bearing rules — MUST FOLLOW
 
-- **MUST run `bash scripts/verify.sh` before every PR.** Runs pytest + Playwright + frontend typecheck + docs lint. Non-negotiable gate.
+- **MUST run `bash scripts/verify.sh` before every PR.** Runs pytest + Playwright + frontend typecheck. Non-negotiable gate.
 - **MUST use the injected clock** (`clock` kwarg / `clk.now`) in all time-dependent code — never call `datetime.utcnow()` directly. Tests depend on this. See [ADR-0006](docs/architecture/decisions/0006-injected-clock.md).
 - **MUST NOT mock the database in tests.** Use the in-memory SQLite via the `client` fixture. See [ADR-0005](docs/architecture/decisions/0005-static-pool-test-engine.md).
 - **MUST NOT change `playwright.config.ts` `stdout: 'ignore', stderr: 'ignore'`.** ARM64 pipe buffer fills, uvicorn blocks on log writes, tests get ERR_CONNECTION_REFUSED. See [docs/guides/development.md](docs/guides/development.md#arm64-pipe-gotcha---do-not-undo).
@@ -34,9 +35,8 @@ A self-contained CRM: **Python + FastAPI + SQLite** backend, **React + Vite + Ta
 - `frontend/` — React + Vite source. Build outputs to `app/static/`.
 - `tests/` — pytest suite (pure unit + API integration).
 - `e2e/` — Playwright suite. One `.spec.ts` per feature area.
-- `scripts/verify.sh` — the PR gate.
-- `scripts/docs_lint.py` — validates frontmatter, links, and rot age. Runs in `verify.sh` and in CI.
-- `.agent/skills/` — per-repo skill bundles loaded by devclaw runners.
+- `scripts/verify.sh` — the PR gate (pytest + Playwright + typecheck).
+- `.agent/skills/` — per-repo skill bundles loaded by devclaw runners. `knowledge-tree.md` teaches the discipline for maintaining `docs/`.
 - `docs/` — the knowledge tree. Start at [docs/INDEX.md](docs/INDEX.md).
 - Top-level: [README.md](README.md), this file, [CHANGELOG.md](CHANGELOG.md).
 
@@ -54,4 +54,4 @@ Add it to the right `docs/` page — do NOT back-fill this file. `AGENTS.md` sta
 - Post-incident review → [docs/operations/incidents/](docs/operations/incidents/INDEX.md).
 - New env var, endpoint, or config knob → the matching [docs/reference/](docs/reference/INDEX.md) page.
 
-Every doc page carries frontmatter (`title`, `status`, `owner`, `last_reviewed`, `tags`). `scripts/docs_lint.py` enforces the contract — see [docs/README.md](docs/README.md).
+Every doc page carries frontmatter (`title`, `status`, `owner`, `last_reviewed`, `tags`). The behavioral discipline for maintaining the tree lives in [.agent/skills/knowledge-tree.md](.agent/skills/knowledge-tree.md) — devclaw runners load it on every task; read it if you're contributing by hand.

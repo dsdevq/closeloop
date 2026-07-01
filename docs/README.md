@@ -70,56 +70,46 @@ Big changes get an RFC BEFORE code lands. An RFC is a proposal-then-discussion d
 - **Where:** [`proposals/`](proposals/INDEX.md).
 - **Full process:** [`proposals/README.md`](proposals/README.md).
 
+## Rot management — the agent maintains its own memory
+
+Docs rot silently. Discipline alone doesn't prevent it — but a *linter* isn't the right shape either, because the primary contributor to this repo is the agent, not a human trying to remember. The discipline needs to live where the agent will read it every time it works.
+
+### `.agent/skills/knowledge-tree.md` — the load-bearing mechanism
+
+CloseLoop's docs tree is maintained by a **skill file** loaded by devclaw runners on every task (per the PR #135 per-repo skills mechanism). The skill teaches the agent two reflexes:
+
+1. **When you edit code, grep `docs/` for what you touched.** If a doc references it, update the doc in the same PR. If your change didn't invalidate the doc, bump its `last_reviewed` anyway — you just verified it's still true.
+2. **When you edit a doc, verify frontmatter is complete, every link resolves, and (if it's a `status: stable` page older than 90 days) re-read it end-to-end before bumping the date.**
+
+That's the whole mechanism. No linter, no cron, no scheduled audit. The reflexes live in front of the contributor at edit time — which is when they matter.
+
+### Why this beats a linter
+
+- **Proactive, not reactive.** A linter catches mistakes after the fact. A skill prevents them by teaching the discipline during the edit.
+- **Semantic, not shape-only.** A linter can only verify frontmatter exists and dates aren't old. The skill can reason: "you touched `app/core/security.py` — the auth guide is affected; did you update it?" Shape checks are trivial in comparison.
+- **No infrastructure to maintain.** No Python script that drifts from the tree it's checking.
+- **Aligned with the model.** Devclaw's premise is that the agent is a senior engineer. Senior engineers don't need a cron job to remind them their docs are stale — they read the doc when they touch the code.
+
+### If a human contributes by hand
+
+Read [`.agent/skills/knowledge-tree.md`](../.agent/skills/knowledge-tree.md) yourself. It's short. The reflexes are the same regardless of who's driving.
+
+### CODEOWNERS — human review routing
+
+`.github/CODEOWNERS` names per-path stewards. When code changes, the doc's owner is auto-added as a reviewer. This is orthogonal to the skill — CODEOWNERS is human-review routing; the skill is agent behavior. Both point at `@dsdevq` today, but the shape scales.
+
+### Empty INDEX entries
+
+A hook without a live page is a stale link in the tree. The skill instructs the agent to check every link it writes; the same reflex catches this. Categories with no live pages carry a stub `INDEX.md` explaining what belongs there (see `docs/proposals/INDEX.md` today) — not an empty file.
+
 ## Adding a page — the checklist
 
 1. Pick the right category (this file's table).
 2. Copy the matching template from `_templates/`.
-3. Fill in the frontmatter — DO NOT skip `owner` or `last_reviewed`.
-4. Link the page from its category's `INDEX.md` with a ~120-char hook (not a summary — a hook that tells the reader what they'll find inside).
-5. If the page supersedes another page, set the frontmatter fields and add a `Superseded by [...]` note to the top of the old page.
+3. Fill in the frontmatter — every required field.
+4. Link the page from its category's `INDEX.md` with a ~120-char hook.
+5. If the page supersedes another, set the frontmatter fields and add a `Superseded by [...]` note to the top of the old page.
 6. If the page adds a durable rule, cross-link it from `AGENTS.md` under the load-bearing rules section.
-
-## Rot management — mechanized, not aspirational
-
-Docs rot silently. Discipline alone doesn't prevent it. CloseLoop's docs tree is protected by a **linter that runs on every PR and a scheduled audit that runs weekly**.
-
-### 1. `scripts/docs_lint.py` — the PR gate
-
-Runs three checks against every markdown file under `docs/`:
-
-- **Frontmatter contract** — every page must carry `title`, `status`, `owner`, `last_reviewed` (or `date` on immutable ADRs), and `tags`. Missing or malformed → **PR fails**.
-- **Link integrity** — every internal markdown link resolves. Dead links (e.g., after a page moves) → **PR fails**.
-- **ADR cross-refs** — every `ADR-NNNN` reference in code or docs points at a file that exists. Dangling refs → **PR fails**.
-
-Plus one advisory:
-
-- **Rot age** — every `status: stable` page whose `last_reviewed` is older than 90 days gets a **warning** on the PR. Doesn't fail the PR (that would block unrelated work) but it's visible.
-
-The lint runs:
-- Locally as step 0 of `bash scripts/verify.sh`.
-- In CI as the `docs` job (`.github/workflows/ci.yml`), which the `test` job depends on — no green CI without green docs.
-
-### 2. Weekly rot audit — `.github/workflows/docs-rot-audit.yml`
-
-A separate scheduled workflow runs the linter with `--strict`, which promotes rot warnings to errors. Runs every Monday at 06:00 UTC. Failure = a red badge on `main` that someone must resolve: bump the date after re-reading, mark the page superseded, or delete it.
-
-The two-layer split (PR-gate advisory + weekly strict audit) is deliberate — the PR gate stays fast and non-blocking on rot; the audit forces someone to look at the whole tree periodically.
-
-### 3. CODEOWNERS — drift alerts
-
-`.github/CODEOWNERS` names per-path stewards, so a PR that changes `app/core/` (where [ADR-0001](architecture/decisions/0001-pure-core-module.md) lives) auto-requests review from the ADR's owner. Frontmatter `owner:` is fine-grained; CODEOWNERS is coarse; both point at the same person for now, but this scales when the team does.
-
-### 4. Pull request template — docs impact checkbox
-
-`.github/pull_request_template.md` forces every PR author to tick "I updated the affected docs" or explicitly state "no docs impact". A silent "I forgot" becomes a visible "I decided".
-
-### Ownership rotation
-
-If the `owner` leaves the team or stops touching this code, the current maintainer picks it up on the next PR that touches it — the PR template's docs checkbox surfaces the ownership question naturally.
-
-### Empty INDEX entries
-
-A hook without a live page is a dead link → **PR fails** via the linter. Categories with zero live pages carry a stub `INDEX.md` explaining what belongs there (see `docs/proposals/INDEX.md` today).
 
 ## Cross-linking discipline
 
