@@ -11,7 +11,7 @@ A self-contained CRM: **Python + FastAPI + SQLite** backend, **React + Vite + Ta
 1. **[docs/INDEX.md](docs/INDEX.md)** — top-level map of the docs tree.
 2. **[docs/product/prd.md](docs/product/prd.md)** — the product contract. THE answer to "what should CloseLoop do".
 3. **[docs/architecture/overview.md](docs/architecture/overview.md)** — layer map, data model, request lifecycle.
-4. **[docs/architecture/decisions/INDEX.md](docs/architecture/decisions/INDEX.md)** — 22 ADRs, one per non-trivial design call. Consult when your instinct disagrees with what's in the code.
+4. **[docs/architecture/decisions/INDEX.md](docs/architecture/decisions/INDEX.md)** — 24 ADRs, one per non-trivial design call. Consult when your instinct disagrees with what's in the code.
 5. Task guides live under [docs/guides/](docs/guides/INDEX.md).
 6. Contributor guide (frontmatter, ADR/RFC process, tree shape): [docs/README.md](docs/README.md).
 7. Behavioral skill for maintaining the tree: [.agent/skills/knowledge-tree.md](.agent/skills/knowledge-tree.md) — devclaw runners auto-load this on every task; read it if you're contributing by hand.
