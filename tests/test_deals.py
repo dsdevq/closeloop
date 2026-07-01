@@ -189,6 +189,36 @@ def test_rotting_fresh_deal_not_rotting(client, contact):
     assert fresh["days_in_stage"] < 1
 
 
+def test_closed_at_set_when_transitioning_to_won(client, contact):
+    r = client.post("/deals", json={"title": "Close Me", "contact_id": contact["id"]})
+    did = r.json()["id"]
+    for stage in ["qualified", "proposal", "negotiation", "won"]:
+        res = client.patch(f"/deals/{did}/stage", json={"stage": stage})
+        assert res.status_code == 200
+    data = res.json()
+    assert data["stage"] == "won"
+    assert data["closed_at"] is not None
+
+
+def test_closed_at_set_when_transitioning_to_lost(client, contact):
+    r = client.post("/deals", json={"title": "Lose Me", "contact_id": contact["id"]})
+    did = r.json()["id"]
+    res = client.patch(f"/deals/{did}/stage", json={"stage": "lost"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["stage"] == "lost"
+    assert data["closed_at"] is not None
+
+
+def test_closed_at_none_for_open_stage_transitions(client, contact):
+    r = client.post("/deals", json={"title": "Open Deal", "contact_id": contact["id"]})
+    did = r.json()["id"]
+    for stage in ["qualified", "proposal", "negotiation"]:
+        res = client.patch(f"/deals/{did}/stage", json={"stage": stage})
+        assert res.status_code == 200
+        assert res.json()["closed_at"] is None
+
+
 def test_rotting_uses_injected_clock(client, contact):
     """When clock is advanced past SLA, deal should appear as rotting."""
     from datetime import datetime, timedelta, timezone

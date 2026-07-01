@@ -52,6 +52,7 @@ def _to_out(deal: Deal, contact_name: Optional[str] = None) -> dict:
         "probability": deal.probability,
         "created_at": deal.created_at,
         "updated_at": deal.updated_at,
+        "closed_at": deal.closed_at,
     }
 
 
@@ -118,6 +119,7 @@ def list_deals(
 
 _DEAL_CSV_EXPORT_FIELDS = ["id", "contact_id", "title", "value", "stage", "currency", "expected_close_date", "created_at"]
 _DEAL_VALID_STAGES = {"lead", "qualified", "proposal", "negotiation", "won", "lost"}
+_DEAL_CLOSED_STAGES = frozenset({"won", "lost"})
 
 
 @router.get("/export")
@@ -298,6 +300,7 @@ def update_deal_stage(
     deal.stage = body.stage
     deal.probability = stage_probability(body.stage)
     deal.updated_at = now
+    deal.closed_at = now if body.stage in _DEAL_CLOSED_STAGES else None
 
     transition = StageTransition(
         deal_id=deal.id,

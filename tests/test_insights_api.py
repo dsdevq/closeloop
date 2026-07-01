@@ -293,6 +293,38 @@ def test_leaderboard_rep_cannot_see_other_rep_data(ic):
     assert data[0]["revenue"] == pytest.approx(100.0)
 
 
+def test_leaderboard_avg_cycle_days_populated_after_close(ic):
+    """avg_cycle_days must be non-None after a deal is properly closed via the API."""
+    client, headers, user_ids, _ = ic
+    cid = _make_contact(client, "CycleTest", "cycle@x.com")
+    rep1_h = headers["rep1@t.com"]
+    _close_deal_as_won(client, cid, 1000.0, rep1_h)
+
+    r = client.get("/insights/leaderboard")
+    assert r.status_code == 200
+    rows = r.json()
+    rep1_row = next(row for row in rows if row["owner_id"] == user_ids["rep1@t.com"])
+    assert rep1_row["avg_cycle_days"] is not None
+    assert rep1_row["avg_cycle_days"] >= 0.0
+
+
+def test_leaderboard_avg_cycle_days_none_for_open_only_rep(ic):
+    """A rep with only open (non-won) deals must not appear in the leaderboard at all."""
+    client, headers, user_ids, _ = ic
+    cid = _make_contact(client, "OpenOnly", "openonly@x.com")
+    rep1_h = headers["rep1@t.com"]
+    # Create a deal but leave it in lead stage (never advance to won)
+    client.post(
+        "/deals",
+        json={"title": "Open Deal", "contact_id": cid, "value": 500.0},
+        headers=rep1_h,
+    )
+
+    r = client.get("/insights/leaderboard", headers=rep1_h)
+    assert r.status_code == 200
+    assert r.json() == []
+
+
 def test_leaderboard_requires_auth(ic):
     client, *_ = ic
     r = client.get("/insights/leaderboard", headers={"Authorization": "Bearer badtoken"})

@@ -267,6 +267,31 @@ class TestRepLeaderboard:
         assert result[0]["deals_closed"] == 2
         assert result[0]["revenue"] == pytest.approx(3000.0)
 
+    def test_avg_cycle_days_excludes_open_deals(self):
+        """Open deals (no closed_at) must not affect avg_cycle_days for won deals."""
+        deals = [
+            _deal(stage="won", owner_id=1, created_at=_NOW - timedelta(days=10), closed_at=_NOW),
+            _deal(stage="lead", owner_id=1),  # open — excluded from avg and row entirely
+        ]
+        result = rep_leaderboard(deals)
+        assert len(result) == 1  # only the won deal creates a row
+        assert result[0]["avg_cycle_days"] == pytest.approx(10.0)
+
+    def test_avg_cycle_days_partial_when_some_won_deals_lack_closed_at(self):
+        """Won deals missing closed_at are excluded from cycle avg but count toward revenue."""
+        deals = [
+            _deal(stage="won", owner_id=1, value=1000.0,
+                  created_at=_NOW - timedelta(days=10), closed_at=_NOW),
+            _deal(stage="won", owner_id=1, value=2000.0),  # closed_at=None
+        ]
+        result = rep_leaderboard(deals)
+        assert len(result) == 1
+        row = result[0]
+        assert row["revenue"] == pytest.approx(3000.0)
+        assert row["deals_closed"] == 2
+        # Only the first deal contributes to the average
+        assert row["avg_cycle_days"] == pytest.approx(10.0)
+
     def test_deal_without_owner_id_excluded(self):
         deal = _deal(stage="won", owner_id=None)
         assert rep_leaderboard([deal]) == []
