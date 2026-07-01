@@ -1,3 +1,11 @@
+---
+title: Frontend guide (React + Vite + Tailwind)
+status: stable
+owner: "@dsdevq"
+last_reviewed: 2026-07-01
+tags: [frontend, react, vite]
+---
+
 # Frontend
 
 React + Vite + TypeScript + Tailwind. Source in `frontend/src/`, build output in `app/static/`.

@@ -1,0 +1,22 @@
+name: Docs rot audit
+
+# Weekly scheduled audit of docs freshness. Unlike the PR-gate lint (which
+# treats rot as advisory), this job runs `--strict` and FAILS on any stable
+# page whose last_reviewed is older than the rot threshold (default 90 days).
+# The failure surfaces as a red badge on the default branch — someone has to
+# resolve it (bump the date after re-reading, mark superseded, or delete).
+
+on:
+  schedule:
+    # 06:00 UTC every Monday — surfaces the report before the working week.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: Docs rot audit
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Strict docs lint
+        run: python3 scripts/docs_lint.py --strict

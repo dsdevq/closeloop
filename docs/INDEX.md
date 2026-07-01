@@ -1,27 +1,51 @@
-# docs/ index
+---
+title: docs — top-level index
+status: stable
+owner: "@dsdevq"
+last_reviewed: 2026-07-01
+tags: [meta, navigation]
+---
 
-Knowledge tree for CloseLoop. Each entry is a hook (~120 chars) — follow the ones your task needs, don't read the whole tree upfront.
+# CloseLoop docs
 
-## Development
+Navigate by category. Each category has its own `INDEX.md` — this file is the map to the map. If you're contributing, read [README.md](README.md) first.
 
-- [development.md](development.md) — install, run, test locally; ARM64 Playwright workaround; the verify gate
-- [testing.md](testing.md) — pytest fixture patterns, clock override, `StaticPool`, why we never mock the DB
-- [e2e.md](e2e.md) — Playwright suite layout, spec-per-feature convention, current status
-- [deploy.md](deploy.md) — Dockerfile shape, singleton container per repo, CI + tailscale-served URL
+## Architecture — how it's built
 
-## Product
+- [architecture/overview.md](architecture/overview.md) — layer map, data model, request lifecycle, test design
+- [architecture/decisions/](architecture/decisions/INDEX.md) — 22 immutable ADRs recording every non-trivial design call
+- [architecture/decisions/README.md](architecture/decisions/README.md) — the ADR process itself
 
-- [../PRD.md](../PRD.md) — the product contract; the answer to "what should CloseLoop do"
-- [DOMAIN.md](DOMAIN.md) — CRM domain best-practices brief + honest assessment of CloseLoop's roadmap
-- [../BACKLOG.md](../BACKLOG.md) — what's next
-- [../CHANGELOG.md](../CHANGELOG.md) — what shipped, when
+## Product — what it does + where it's going
 
-## Architecture + Decisions
+- [product/prd.md](product/prd.md) — the product contract, authored at kickoff, judged against
+- [product/roadmap.md](product/roadmap.md) — milestone status, what's next
+- [product/domain-brief.md](product/domain-brief.md) — CRM domain knowledge + honest v1–v6 roadmap thinking
 
-- [../ARCHITECTURE.md](../ARCHITECTURE.md) — layer map, data model, request lifecycle, test design
-- [../DECISIONS.md](../DECISIONS.md) — 22 D-numbered decisions with rationale; the "why" for every non-obvious call
+## Guides — how to do specific things
 
-## Subsystem deep-dives
+- [guides/development.md](guides/development.md) — install, run, test, verify gate, ARM64 Playwright workaround
+- [guides/testing.md](guides/testing.md) — pytest fixture patterns, clock override, `StaticPool`, why we don't mock the DB
+- [guides/e2e.md](guides/e2e.md) — Playwright suite layout, spec-per-feature, fixme catalog
+- [guides/auth.md](guides/auth.md) — JWT strategy, roles, seed credentials, migrations
+- [guides/frontend.md](guides/frontend.md) — React SPA structure: types/, lib/, features/, hooks/
+- [guides/deploy.md](guides/deploy.md) — Dockerfile shape, singleton container, tailscale-served URL
 
-- [auth.md](auth.md) — JWT strategy, three roles, seed credentials, `owner_id` migration, test fixtures
-- [frontend.md](frontend.md) — React SPA structure: types/, lib/, components/ui/, features/, hooks/, the AppModals pattern
+## Reference — dry, exhaustive lookup
+
+- [reference/env-vars.md](reference/env-vars.md) — every environment variable the app reads
+
+## Operations — how we run this in production
+
+- [operations/runbooks/](operations/runbooks/INDEX.md) — step-by-step procedures for common operational tasks
+- [operations/incidents/](operations/incidents/INDEX.md) — post-incident reviews (empty until we have one to write)
+
+## Proposals — RFCs, in flight
+
+- [proposals/](proposals/INDEX.md) — designs under discussion; not accepted, not law
+- [proposals/README.md](proposals/README.md) — the RFC process
+
+## Meta
+
+- [README.md](README.md) — how this tree works: categories, frontmatter, templates, ADR/RFC process, rot management
+- [_templates/](_templates/) — ADR, RFC, runbook, incident templates

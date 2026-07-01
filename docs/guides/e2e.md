@@ -1,3 +1,11 @@
+---
+title: E2E guide (Playwright)
+status: stable
+owner: "@dsdevq"
+last_reviewed: 2026-07-01
+tags: [testing, e2e, playwright]
+---
+
 # E2E — Playwright
 
 Layout of the Playwright suite. Setup (Playwright install, ARM64 quirks) is in [development.md](development.md).

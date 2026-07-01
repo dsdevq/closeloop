@@ -1,49 +1,57 @@
 # CloseLoop — Agent Harness
 
-You are a senior engineer picking up CloseLoop. This file is your entry point; the rest of the knowledge tree lives under [docs/](docs/INDEX.md).
+You are a senior engineer picking up CloseLoop. This file is your entry point; the full knowledge tree lives under [docs/](docs/INDEX.md).
 
 ## What CloseLoop is (60 seconds)
 
-A self-contained CRM: **Python + FastAPI + SQLite** backend, **React + Vite + Tailwind** frontend served from the same origin. Zero external services, zero outbound network calls (enforced by test), single binary + a static bundle. Full product contract in [PRD.md](PRD.md).
+A self-contained CRM: **Python + FastAPI + SQLite** backend, **React + Vite + Tailwind** frontend served from the same origin. Zero external services, zero outbound network calls (enforced by test — see [ADR-0010](docs/architecture/decisions/0010-outbox-queue-only.md)). Single binary + a static bundle. Full product contract in [docs/product/prd.md](docs/product/prd.md).
 
 ## How to navigate this repo
 
-Read in this order:
-
-1. **[docs/INDEX.md](docs/INDEX.md)** — the map of the docs tree. Follow the links your task needs; you don't need to read everything upfront.
-2. **[PRD.md](PRD.md)** — the product contract. THE answer to "what should CloseLoop do".
-3. **[ARCHITECTURE.md](ARCHITECTURE.md)** — layer map, data model, request lifecycle.
-4. **[DECISIONS.md](DECISIONS.md)** — 22 D-numbered decisions with rationale. Consult when your instinct disagrees with what's in the code — usually the code is right.
-5. Subsystem deep-dives in [`docs/`](docs/INDEX.md): development, testing, auth, frontend, e2e, deploy.
+1. **[docs/INDEX.md](docs/INDEX.md)** — top-level map of the docs tree.
+2. **[docs/product/prd.md](docs/product/prd.md)** — the product contract. THE answer to "what should CloseLoop do".
+3. **[docs/architecture/overview.md](docs/architecture/overview.md)** — layer map, data model, request lifecycle.
+4. **[docs/architecture/decisions/INDEX.md](docs/architecture/decisions/INDEX.md)** — 22 ADRs, one per non-trivial design call. Consult when your instinct disagrees with what's in the code.
+5. Task guides live under [docs/guides/](docs/guides/INDEX.md).
+6. Contributor guide (frontmatter, ADR/RFC process, rot management): [docs/README.md](docs/README.md).
 
 ## Load-bearing rules — MUST FOLLOW
 
-- **MUST run `bash scripts/verify.sh` before every PR.** Runs pytest + Playwright + frontend typecheck. Non-negotiable gate.
-- **MUST use the injected clock** (`clock` kwarg / `clk.now`) in all time-dependent code — never call `datetime.utcnow()` directly. Tests depend on this. See [D6](DECISIONS.md).
-- **MUST NOT mock the database in tests.** Use the in-memory SQLite via the `client` fixture. Mocked DBs mask schema drift and migration bugs.
-- **MUST NOT change `playwright.config.ts` `stdout: 'ignore', stderr: 'ignore'`.** ARM64 pipe buffer fills, uvicorn blocks on log writes, tests get ERR_CONNECTION_REFUSED. See [docs/development.md](docs/development.md).
-- **MUST use `apiFetch`** (from `frontend/src/lib/api.ts`), never bare `fetch()`. Auth-aware; handles 401 → login redirect consistently across features.
-- **MUST NOT introduce runtime outbound network calls.** Product invariant; enforced by `test_no_outbound_network.py`.
+- **MUST run `bash scripts/verify.sh` before every PR.** Runs pytest + Playwright + frontend typecheck + docs lint. Non-negotiable gate.
+- **MUST use the injected clock** (`clock` kwarg / `clk.now`) in all time-dependent code — never call `datetime.utcnow()` directly. Tests depend on this. See [ADR-0006](docs/architecture/decisions/0006-injected-clock.md).
+- **MUST NOT mock the database in tests.** Use the in-memory SQLite via the `client` fixture. See [ADR-0005](docs/architecture/decisions/0005-static-pool-test-engine.md).
+- **MUST NOT change `playwright.config.ts` `stdout: 'ignore', stderr: 'ignore'`.** ARM64 pipe buffer fills, uvicorn blocks on log writes, tests get ERR_CONNECTION_REFUSED. See [docs/guides/development.md](docs/guides/development.md#arm64-pipe-gotcha---do-not-undo).
+- **MUST use `apiFetch`** (from `frontend/src/lib/api.ts`), never bare `fetch()`. Auth-aware; handles 401 → login redirect consistently.
+- **MUST NOT introduce runtime outbound network calls.** Product invariant; enforced by `test_no_outbound_network.py`. See [ADR-0010](docs/architecture/decisions/0010-outbox-queue-only.md).
 - **MUST NOT use `dangerouslySetInnerHTML`** for user-supplied data.
-- **MUST register API routers BEFORE `app.mount("/", StaticFiles(...))`** in `app/main.py` — FastAPI evaluates routes in registration order.
+- **MUST register API routers BEFORE `app.mount("/", StaticFiles(...))`** in `app/main.py` — route registration order determines which handler wins.
 - **MUST use `Response(status_code=204)`** for 204 responses, not plain `return`.
-- **MUST return HTTP 422** (not 400) for semantic validation failures — aligns with FastAPI convention.
+- **MUST return HTTP 422** (not 400) for semantic validation failures — see [ADR-0002](docs/architecture/decisions/0002-stage-state-machine.md).
 
 ## What lives WHERE
 
-- `app/` — FastAPI backend. `app/core/` = pure functions, no I/O, no globals.
+- `app/` — FastAPI backend. `app/core/` = pure functions, no I/O, no globals ([ADR-0001](docs/architecture/decisions/0001-pure-core-module.md)).
 - `frontend/` — React + Vite source. Build outputs to `app/static/`.
 - `tests/` — pytest suite (pure unit + API integration).
 - `e2e/` — Playwright suite. One `.spec.ts` per feature area.
-- `scripts/verify.sh` — the PR gate. Handles ARM64 no-root Playwright quirks.
+- `scripts/verify.sh` — the PR gate.
+- `scripts/docs_lint.py` — validates frontmatter, links, and rot age. Runs in `verify.sh` and in CI.
 - `.agent/skills/` — per-repo skill bundles loaded by devclaw runners.
-- `docs/` — narrative documentation. Read [docs/INDEX.md](docs/INDEX.md) first.
-- Top-level: [README.md](README.md), [PRD.md](PRD.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DECISIONS.md](DECISIONS.md), [BACKLOG.md](BACKLOG.md), [CHANGELOG.md](CHANGELOG.md) — durable, hand-curated.
+- `docs/` — the knowledge tree. Start at [docs/INDEX.md](docs/INDEX.md).
+- Top-level: [README.md](README.md), this file, [CHANGELOG.md](CHANGELOG.md).
 
 ## Milestones (as of 2026-07-01)
 
-M1–M5 + v1 (auth) + v2 (accounts + pipeline stages) are all **✅ Done**. See [BACKLOG.md](BACKLOG.md) for what's next and [CHANGELOG.md](CHANGELOG.md) for what shipped.
+M1–M5 + v1 (auth) + v2 (accounts + pipeline stages) all **✅ Done**. See [docs/product/roadmap.md](docs/product/roadmap.md).
 
-## When something's not in the docs
+## When you learn something durable
 
-If you learn something durable while working — a subtle invariant, a gotcha that would surprise the next reader, a decision with real "why" behind it — add it to the right `docs/` page (and link from the INDEX) rather than back-filling this file. `AGENTS.md` stays lean; the tree grows.
+Add it to the right `docs/` page — do NOT back-fill this file. `AGENTS.md` stays lean; the tree grows.
+
+- Design decision with rationale → new ADR under [docs/architecture/decisions/](docs/architecture/decisions/INDEX.md), following [that dir's README](docs/architecture/decisions/README.md).
+- Bigger design in flight → RFC under [docs/proposals/](docs/proposals/INDEX.md).
+- Operational procedure → runbook under [docs/operations/runbooks/](docs/operations/runbooks/INDEX.md).
+- Post-incident review → [docs/operations/incidents/](docs/operations/incidents/INDEX.md).
+- New env var, endpoint, or config knob → the matching [docs/reference/](docs/reference/INDEX.md) page.
+
+Every doc page carries frontmatter (`title`, `status`, `owner`, `last_reviewed`, `tags`). `scripts/docs_lint.py` enforces the contract — see [docs/README.md](docs/README.md).

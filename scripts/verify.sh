@@ -9,6 +9,11 @@
 #   bash scripts/verify.sh
 set -euo pipefail
 
+# ── Step 0: Docs lint (frontmatter + links + ADR cross-refs) ─────────────────
+# Fast; runs before the heavier suites so contributors see doc debt immediately.
+# Errors block the gate; rot warnings are advisory unless --strict is passed.
+python3 scripts/docs_lint.py
+
 # ── Step 1: Python unit tests ─────────────────────────────────────────────────
 pip install -q -r requirements.txt
 python -m pytest -q

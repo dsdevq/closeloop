@@ -1,3 +1,11 @@
+---
+title: Architecture overview
+status: stable
+owner: "@dsdevq"
+last_reviewed: 2026-07-01
+tags: [architecture, layer-map, data-model]
+---
+
 # CloseLoop — Architecture
 
 ## Overview

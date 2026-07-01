@@ -1,3 +1,11 @@
+---
+title: Development guide
+status: stable
+owner: "@dsdevq"
+last_reviewed: 2026-07-01
+tags: [development, testing, e2e, setup]
+---
+
 # Development
 
 How to install, run, and test CloseLoop locally.

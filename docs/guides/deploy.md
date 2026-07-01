@@ -1,3 +1,11 @@
+---
+title: Deploy guide
+status: stable
+owner: "@dsdevq"
+last_reviewed: 2026-07-01
+tags: [deploy, docker, tailscale]
+---
+
 # Deploy
 
 CloseLoop owns its runtime. Devclaw opens PRs; closeloop deploys itself.

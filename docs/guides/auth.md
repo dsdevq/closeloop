@@ -1,3 +1,11 @@
+---
+title: Auth guide (v1)
+status: stable
+owner: "@dsdevq"
+last_reviewed: 2026-07-01
+tags: [auth, jwt, roles]
+---
+
 # Auth (v1)
 
 JWT-based auth layer. Landed in v1; test-fixture-transparent so pre-auth tests kept working unchanged.
