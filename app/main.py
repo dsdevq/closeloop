@@ -20,6 +20,7 @@ from app.routers.contacts import router as contacts_router
 from app.routers.deals import router as deals_router
 from app.routers.forecast import router as forecast_router
 from app.routers.health import router as health_router
+from app.routers.insights import router as insights_router
 from app.routers.outbox import router as outbox_router
 from app.routers.pipeline import router as pipeline_router
 from app.routers.reminders import router as reminders_router
@@ -194,6 +195,7 @@ app.include_router(pipeline_router)
 app.include_router(activities_router)
 app.include_router(reminders_router)
 app.include_router(forecast_router)
+app.include_router(insights_router)
 app.include_router(saved_views_router)
 app.include_router(outbox_router)
 app.include_router(stats_router)
