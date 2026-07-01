@@ -44,6 +44,8 @@ A self-contained CRM: **Python + FastAPI + SQLite** backend, **React + Vite + Ta
 
 M1–M5 + v1 (auth) + v2 (accounts + pipeline stages) all **✅ Done**. See [docs/product/roadmap.md](docs/product/roadmap.md).
 
+**In progress:** Insights dashboard — backend `/insights/{trends,funnel,leaderboard,cohorts}` endpoints done (#28–#29); frontend `features/insights/` scaffolded (InsightsView + 4 stub sections + SVG chart primitives); tab wiring into AppHeader is next once section internals are implemented.
+
 ## When you learn something durable
 
 Add it to the right `docs/` page — do NOT back-fill this file. `AGENTS.md` stays lean; the tree grows.
