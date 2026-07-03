@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Float, Integer, String, Text, ForeignKey
+from sqlalchemy import Column, Float, Index, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -227,3 +227,34 @@ class DealTag(Base):
 
     deal = relationship("Deal", back_populates="tags")
     tag = relationship("Tag", back_populates="deals")
+
+
+class Notification(Base):
+    """In-app notification for a single recipient user.
+
+    Created by trigger wiring (stage changes, deal assignment, @mentions, overdue tasks).
+    Retrieved via the pull API; never pushed via WebSocket.
+    `read_at` NULL means unread; set to ISO-8601 UTC string when marked read.
+    `payload_json` contains a serialised NotificationEvent (see app/core/notifications.py).
+    """
+    __tablename__ = "notifications"
+    # Composite index supports the frequent WHERE recipient_id=? AND read_at IS NULL
+    # query used by unread-count and unread_only list filtering (see ADR-0025).
+    __table_args__ = (
+        Index("ix_notifications_recipient_read", "recipient_id", "read_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    recipient_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    kind = Column(String, nullable=False)
+    entity_type = Column(String)   # "deal" / "activity" / "contact" / None
+    entity_id = Column(Integer)    # PK of the linked entity; None for system events
+    payload_json = Column(Text, nullable=False)
+    read_at = Column(String)       # NULL = unread
+    created_at = Column(String, nullable=False)
+
+    recipient = relationship("User", foreign_keys=[recipient_id])
+    actor = relationship("User", foreign_keys=[actor_id])

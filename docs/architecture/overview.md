@@ -28,6 +28,7 @@ app/
     velocity.py     — time_in_stage_hours, cycle_time_hours, avg_days_per_stage, is_deal_rotting [Post]
     recurrence.py   — RRULE-lite expand_rrule (daily/weekly/monthly)          [Post]
     insights.py     — trends, conversion_funnel, rep_leaderboard, source_cohorts [Post]
+    notifications.py — typed event model: DealAssigned/StageChanged/TaskOverdue/Mention [v6-slice1]
   routers/
     health.py       — GET /health
     contacts.py     — CRUD /contacts (+ lead-score, CSV export/import)        [M3+Post]
@@ -39,6 +40,7 @@ app/
     outbox.py       — CRUD /outbox (queue-only) + POST /outbox/digest        [M4+Post]
     stats.py        — GET /stats (aggregate dashboard metrics)               [M4]
     tags.py         — CRUD /tags + /tags/contacts/{id} + /tags/deals/{id}    [Post]
+    notifications.py — GET /notifications, unread-count, mark-read (pull model) [v6-slice1]
   static/
     index.html      — Single-file kanban + contacts + Today + Stats           [M4]
 tests/
@@ -62,6 +64,8 @@ tests/
   test_stats.py                 — API tests (metrics, clock override)             [M4]
   test_bulk.py                  — CSV import/export for contacts & deals          [Post]
   test_tags.py                  — tags CRUD, contact/deal associations, filter    [Post]
+  test_core_notifications.py    — pure event model: serialisation, deserialisation, render [v6-slice1]
+  test_notifications.py         — API pull endpoints, per-user isolation          [v6-slice1]
 ```
 
 ## Data Model
@@ -81,6 +85,7 @@ SQLite file `closeloop.db`. Foreign keys enforced via `PRAGMA foreign_keys = ON`
 | tags | id, name (UNIQUE), created_at | Post-MVP |
 | contact_tags | contact_id→contacts (CASCADE), tag_id→tags (CASCADE) | composite PK, many-to-many |
 | deal_tags | deal_id→deals (CASCADE), tag_id→tags (CASCADE) | composite PK, many-to-many |
+| notifications | id, recipient_id→users (CASCADE), actor_id→users (SET NULL), kind, entity_type, entity_id, payload_json, read_at, created_at | v6 — pull-model notification centre; see ADR-0025 |
 
 Timestamps: ISO-8601 UTC strings (SQLite TEXT).
 
@@ -104,3 +109,4 @@ HTTP request
 - Pure-logic tests (`test_core_*.py`) need no fixtures.
 - API tests use the `client` fixture; all state is isolated per test.
 - Clock-dependent API tests override `get_clock` directly on `app.dependency_overrides` inside the test (with `finally:` cleanup for isolation). See `test_reminders.py`.
+- `db_session` fixture (added for v6 slice 1) exposes a raw SQLAlchemy session sharing the `client` fixture's in-memory DB — used to seed rows that have no public creation API endpoint yet (e.g. `Notification`).
