@@ -8,12 +8,20 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
+from app.core.history import (
+    DealAssignedEntry,
+    DealCreatedEntry,
+    DealDeletedEntry,
+    DealStageChangedEntry,
+    DealUpdatedEntry,
+)
 from app.core.notifications import DealAssignedEvent, StageChangedEvent
 from app.core.stages import stage_probability, validate_transition
 from app.core.velocity import is_deal_rotting, stage_sla_days, time_in_stage_hours
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Contact, Deal, PipelineStage, StageTransition, User
+from app.services.history import record_history
 from app.services.notifications import create_notification
 
 router = APIRouter(prefix="/deals")
@@ -93,7 +101,7 @@ def create_deal(
         updated_at=now,
     )
     db.add(deal)
-    db.flush()  # get deal.id before inserting transition
+    db.flush()  # get deal.id before inserting transition and history
 
     transition = StageTransition(
         deal_id=deal.id,
@@ -102,6 +110,20 @@ def create_deal(
         occurred_at=now,
     )
     db.add(transition)
+
+    # Salesforce Field History Tracking pattern: write history in same transaction.
+    record_history(
+        db,
+        entity_type="deal",
+        entity_id=deal.id,
+        event=DealCreatedEntry(
+            deal_id=deal.id,
+            deal_title=deal.title,
+            actor_id=current_user.id,
+        ),
+        clk=clk,
+    )
+
     db.commit()
     db.refresh(deal)
     return _to_out(deal)
@@ -331,6 +353,22 @@ def update_deal_stage(
             clk=clk,
         )
 
+    # Salesforce Field History Tracking pattern: record stage change in history.
+    if body.stage != old_stage:
+        record_history(
+            db,
+            entity_type="deal",
+            entity_id=deal.id,
+            event=DealStageChangedEntry(
+                deal_id=deal.id,
+                deal_title=deal.title,
+                actor_id=current_user.id,
+                from_stage=old_stage,
+                to_stage=body.stage,
+            ),
+            clk=clk,
+        )
+
     db.commit()
     db.refresh(deal)
     return _to_out(deal)
@@ -420,6 +458,53 @@ def update_deal(
             clk=clk,
         )
 
+    # Salesforce Field History Tracking pattern: record what changed in history.
+    if stage_id_in_update and deal.stage != old_stage:
+        record_history(
+            db,
+            entity_type="deal",
+            entity_id=deal.id,
+            event=DealStageChangedEntry(
+                deal_id=deal.id,
+                deal_title=deal.title,
+                actor_id=current_user.id,
+                from_stage=old_stage,
+                to_stage=deal.stage,
+            ),
+            clk=clk,
+        )
+
+    if new_owner_id and new_owner_id != old_owner_id:
+        record_history(
+            db,
+            entity_type="deal",
+            entity_id=deal.id,
+            event=DealAssignedEntry(
+                deal_id=deal.id,
+                deal_title=deal.title,
+                actor_id=current_user.id,
+                from_owner_id=old_owner_id,
+                to_owner_id=new_owner_id,
+            ),
+            clk=clk,
+        )
+
+    # Record a generic update entry when non-structural fields changed.
+    structural_only = {"stage_id", "owner_id"}
+    non_structural_updates = {k for k in updates if k not in structural_only}
+    if non_structural_updates:
+        record_history(
+            db,
+            entity_type="deal",
+            entity_id=deal.id,
+            event=DealUpdatedEntry(
+                deal_id=deal.id,
+                deal_title=deal.title,
+                actor_id=current_user.id,
+            ),
+            clk=clk,
+        )
+
     db.commit()
     db.refresh(deal)
     return _to_out(deal)
@@ -429,12 +514,32 @@ def update_deal(
 def delete_deal(
     deal_id: int,
     db: Session = Depends(get_db),
+    clk: Clock = Depends(get_clock),
     current_user: User = Depends(get_current_user),
 ):
     query = _apply_owner_filter(db.query(Deal), current_user)
     deal = query.filter(Deal.id == deal_id).first()
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
+
+    # Capture title before deletion; entity_id survives as a plain INTEGER
+    # (no FK on HistoryEntry.entity_id — see activity-timeline.md §5).
+    deal_title = deal.title
+
     db.delete(deal)
+
+    # Salesforce Field History Tracking pattern: write history in same transaction.
+    record_history(
+        db,
+        entity_type="deal",
+        entity_id=deal_id,
+        event=DealDeletedEntry(
+            deal_id=deal_id,
+            deal_title=deal_title,
+            actor_id=current_user.id,
+        ),
+        clk=clk,
+    )
+
     db.commit()
     return Response(status_code=204)

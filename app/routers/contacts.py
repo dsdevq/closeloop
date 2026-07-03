@@ -9,10 +9,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
+from app.core.history import ContactCreatedEntry, ContactDeletedEntry, ContactUpdatedEntry
 from app.core.lead_score import compute_lead_score
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Activity, Contact, Deal, User
+from app.services.history import record_history
 
 router = APIRouter(prefix="/contacts")
 
@@ -85,6 +87,21 @@ def create_contact(
         updated_at=now,
     )
     db.add(contact)
+    db.flush()  # get contact.id before writing history
+
+    # Salesforce Field History Tracking pattern: write history in same transaction.
+    record_history(
+        db,
+        entity_type="contact",
+        entity_id=contact.id,
+        event=ContactCreatedEntry(
+            contact_id=contact.id,
+            contact_name=contact.name,
+            actor_id=current_user.id,
+        ),
+        clk=clk,
+    )
+
     db.commit()
     db.refresh(contact)
     return _to_out(contact)
@@ -214,6 +231,20 @@ def update_contact(
     for field, value in updates.items():
         setattr(contact, field, value)
     contact.updated_at = clk.now().isoformat()
+
+    # Salesforce Field History Tracking pattern: write history in same transaction.
+    record_history(
+        db,
+        entity_type="contact",
+        entity_id=contact.id,
+        event=ContactUpdatedEntry(
+            contact_id=contact.id,
+            contact_name=contact.name,
+            actor_id=current_user.id,
+        ),
+        clk=clk,
+    )
+
     db.commit()
     db.refresh(contact)
     return _to_out(contact)
@@ -223,13 +254,33 @@ def update_contact(
 def delete_contact(
     contact_id: int,
     db: Session = Depends(get_db),
+    clk: Clock = Depends(get_clock),
     current_user: User = Depends(get_current_user),
 ):
     query = _apply_owner_filter(db.query(Contact), current_user)
     contact = query.filter(Contact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
+
+    # Capture name before deletion; entity_id survives as a plain INTEGER
+    # (no FK on HistoryEntry.entity_id — see activity-timeline.md §5).
+    contact_name = contact.name
+
     db.delete(contact)
+
+    # Salesforce Field History Tracking pattern: write history in same transaction.
+    record_history(
+        db,
+        entity_type="contact",
+        entity_id=contact_id,
+        event=ContactDeletedEntry(
+            contact_id=contact_id,
+            contact_name=contact_name,
+            actor_id=current_user.id,
+        ),
+        clk=clk,
+    )
+
     db.commit()
     return Response(status_code=204)
 

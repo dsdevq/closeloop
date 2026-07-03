@@ -229,6 +229,35 @@ class DealTag(Base):
     tag = relationship("Tag", back_populates="deals")
 
 
+class HistoryEntry(Base):
+    """Append-only audit history entry for a single entity mutation.
+
+    Created by trigger wiring (create/update/delete/stage-change/assign/complete).
+    Retrieved via GET /history?entity_type=deal&entity_id=N.  Never deleted.
+    `entity_id` is a plain INTEGER (no FK) so entries survive entity deletion.
+    `meta_json` contains a serialised HistoryEvent (see app/core/history.py).
+
+    Trigger mechanism borrowed from Salesforce Field History Tracking: written
+    in the same transaction as the mutation, before db.commit().
+    """
+    __tablename__ = "history_entries"
+    # Composite index supports the frequent WHERE entity_type=? AND entity_id=?
+    # ORDER BY occurred_at DESC query used by the timeline retrieval endpoint.
+    __table_args__ = (
+        Index("ix_history_entity", "entity_type", "entity_id", "occurred_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_type = Column(String, nullable=False)    # "deal" / "contact" / "activity"
+    entity_id = Column(Integer, nullable=False)     # no FK — survives entity deletes
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    kind = Column(String, nullable=False)           # discriminator; see app/core/history.py
+    meta_json = Column(Text, nullable=False)        # serialised HistoryEvent
+    occurred_at = Column(String, nullable=False)    # ISO-8601 UTC (injected clock, ADR-0006)
+
+    actor = relationship("User", foreign_keys=[actor_id])
+
+
 class Notification(Base):
     """In-app notification for a single recipient user.
 
