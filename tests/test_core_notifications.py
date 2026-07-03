@@ -15,6 +15,7 @@ from app.core.notifications import (
     TaskOverdueEvent,
     event_from_payload,
     event_to_payload,
+    parse_mentions,
     render_notification,
 )
 
@@ -227,3 +228,71 @@ class TestEventKindField:
     ])
     def test_kind_attribute_matches_expected(self, event, expected_kind):
         assert event.kind == expected_kind
+
+
+# ── parse_mentions ────────────────────────────────────────────────────────────
+
+
+class TestParseMentions:
+    def test_empty_string_returns_empty(self):
+        assert parse_mentions("") == []
+
+    def test_no_mentions_returns_empty(self):
+        assert parse_mentions("Just a regular note without any at-signs") == []
+
+    def test_single_mention_returns_token(self):
+        assert parse_mentions("Hello @alice, how are you?") == ["alice"]
+
+    def test_multiple_mentions_preserves_order(self):
+        assert parse_mentions("@alice and @bob should review this") == ["alice", "bob"]
+
+    def test_duplicate_mention_deduplicates(self):
+        assert parse_mentions("Thanks @alice — cc @alice again") == ["alice"]
+
+    def test_tokens_are_lowercased(self):
+        assert parse_mentions("cc @Alice and @BOB") == ["alice", "bob"]
+
+    def test_mention_at_start_of_text(self):
+        assert parse_mentions("@alice check this out") == ["alice"]
+
+    def test_mention_at_end_of_text(self):
+        assert parse_mentions("This is for @alice") == ["alice"]
+
+    def test_dot_separated_token(self):
+        assert parse_mentions("ping @alice.smith on this") == ["alice.smith"]
+
+    def test_bare_at_sign_not_extracted(self):
+        # "@" followed by a space or another "@" — no word char after @
+        assert parse_mentions("send to info @ company") == []
+
+    def test_email_address_in_body_not_extracted(self):
+        # "alice@example.com": the @ is preceded by 'e' (word char) → no match
+        assert parse_mentions("email alice@example.com for details") == []
+
+    def test_mention_followed_by_comma_stops_at_comma(self):
+        # comma is not in the token character class
+        assert parse_mentions("Hey @alice, welcome!") == ["alice"]
+
+    def test_mention_followed_by_colon_stops_at_colon(self):
+        assert parse_mentions("@bob: please review") == ["bob"]
+
+    def test_underscore_separated_token(self):
+        assert parse_mentions("cc @alice_smith here") == ["alice_smith"]
+
+    def test_mixed_alphanumeric_token(self):
+        assert parse_mentions("@rep1 did great") == ["rep1"]
+
+    def test_hyphen_in_token(self):
+        assert parse_mentions("@alice-jones is out today") == ["alice-jones"]
+
+    def test_multiple_duplicates_across_long_body(self):
+        body = "@alice is great. @bob helped too. @alice and @bob both contributed."
+        assert parse_mentions(body) == ["alice", "bob"]
+
+    def test_mention_not_preceded_by_word_char(self):
+        # (@alice) — parenthesis is not a word char, so @ is unguarded → match
+        assert parse_mentions("(see @alice for details)") == ["alice"]
+
+    def test_mention_preceded_by_word_char_not_extracted(self):
+        # "ping@alice" — no space before @; @ is preceded by 'g' (word char) → no match
+        assert parse_mentions("ping@alice") == []
