@@ -16,7 +16,7 @@ from app.core.notifications import (
     TaskOverdueEvent,
     event_to_payload,
 )
-from app.core.security import create_access_token, hash_password
+from app.core.security import hash_password
 from app.models import Notification, User
 
 

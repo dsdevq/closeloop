@@ -46,6 +46,8 @@ M1–M5 + v1 (auth) + v2 (accounts + pipeline stages) all **✅ Done**. See [doc
 
 **Done:** Insights dashboard — all four sections (Trends, Funnel, Leaderboard, SourceCohorts) wired in `features/insights/`. Insights tab added to AppHeader and routed in App.tsx alongside Pipeline/Contacts/Accounts/Activities/Today/Stats. Visible to all roles (auth scoping handled server-side). Smoke e2e test in `e2e/insights.spec.ts`.
 
+**Done:** Notifications engine slice 1 — typed event model (`app/core/notifications.py`: `DealAssignedEvent`, `StageChangedEvent`, `TaskOverdueEvent`, `MentionEvent` discriminated union) + `notifications` table (`app/models.py`) + pull API (`app/routers/notifications.py`: `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/{id}/read`, `POST /notifications/read-all`). Full test coverage in `tests/test_core_notifications.py` + `tests/test_notifications.py`. See [ADR-0025](docs/architecture/decisions/0025-notifications-pull-model.md). Trigger wiring (slice 2), overdue-task generation (slice 3), and email digest (slice 4) are deferred.
+
 ## When you learn something durable
 
 Add it to the right `docs/` page — do NOT back-fill this file. `AGENTS.md` stays lean; the tree grows.
