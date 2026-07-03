@@ -6,10 +6,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
+from app.core.notifications import MentionEvent, parse_mentions
 from app.core.recurrence import expand_rrule
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Activity, User
+from app.services.notifications import create_notification, resolve_mentioned_users
 
 router = APIRouter(prefix="/activities")
 
@@ -67,6 +69,49 @@ def _apply_owner_filter(query, user: User):
     return query
 
 
+def _emit_mention_notifications(
+    db: Session,
+    *,
+    activity: Activity,
+    actor: User,
+    clk: Clock,
+) -> None:
+    """Emit MentionEvent notifications for @mentions found in a note body.
+
+    Zoho @mention / Salesforce Chatter pattern (notifications-engine.md §2.5):
+    @tokens are parsed from the note body, resolved to active User rows by
+    email local-part, and a MentionEvent is written for each recipient
+    (excluding self-mentions).  Does NOT commit — caller owns the transaction.
+
+    Only fires for activities with type == "note"; other activity types
+    (call, email, meeting) are silently skipped so reps can write email
+    addresses or usernames in body fields without triggering spurious pings.
+    """
+    if activity.type != "note" or not activity.body:
+        return
+    tokens = parse_mentions(activity.body)
+    if not tokens:
+        return
+    mentioned = resolve_mentioned_users(db, tokens)
+    snippet = activity.body[:120]
+    for user in mentioned:
+        if user.id == actor.id:
+            continue
+        create_notification(
+            db,
+            recipient_id=user.id,
+            event=MentionEvent(
+                actor_id=actor.id,
+                entity_type="activity",
+                entity_id=activity.id,
+                snippet=snippet,
+            ),
+            entity_type="activity",
+            entity_id=activity.id,
+            clk=clk,
+        )
+
+
 @router.post("", status_code=201)
 def create_activity(
     body: ActivityCreate,
@@ -98,6 +143,10 @@ def create_activity(
         updated_at=now,
     )
     db.add(activity)
+    # Flush to get activity.id before emitting mention notifications;
+    # create_notification adds rows but does not commit (caller owns transaction).
+    db.flush()
+    _emit_mention_notifications(db, activity=activity, actor=current_user, clk=clk)
     db.commit()
     db.refresh(activity)
     return _to_out(activity)
@@ -144,6 +193,8 @@ def update_activity(
     if not a:
         raise HTTPException(status_code=404, detail="Activity not found")
     updates = body.model_dump(exclude_unset=True)
+    # Capture before any pops so we know whether the body content was replaced.
+    body_was_updated = "body" in updates
     if "type" in updates and updates["type"] not in _VALID_TYPES:
         raise HTTPException(
             status_code=422,
@@ -162,6 +213,9 @@ def update_activity(
     for field, value in updates.items():
         setattr(a, field, value)
     a.updated_at = clk.now().isoformat()
+    # Re-parse @mentions whenever the note body is explicitly updated.
+    if body_was_updated:
+        _emit_mention_notifications(db, activity=a, actor=current_user, clk=clk)
     db.commit()
     db.refresh(a)
     return _to_out(a)

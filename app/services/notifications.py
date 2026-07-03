@@ -5,7 +5,11 @@ It derives `actor_id` from the event so callers only pass the recipient and
 context fields — consistent with Attio's first-class `actor_id` on events and
 Salesforce's typed notification creation API (internal, not a REST endpoint).
 
-ADR-0001: this module has I/O (DB write) so it lives in app/services/, not app/core/.
+`resolve_mentioned_users` maps @mention tokens (from `parse_mentions()` in
+app/core/notifications) to active User rows by email local-part — the I/O
+counterpart to the pure `parse_mentions` function.
+
+ADR-0001: this module has I/O (DB read/write) so it lives in app/services/, not app/core/.
 """
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import Clock
 from app.core.notifications import NotificationEvent, event_to_payload
-from app.models import Notification
+from app.models import Notification, User
 
 
 def create_notification(
@@ -43,3 +47,29 @@ def create_notification(
     )
     db.add(n)
     return n
+
+
+def resolve_mentioned_users(db: Session, tokens: list[str]) -> list[User]:
+    """Resolve @mention tokens to active User rows by email local-part.
+
+    Matches each token against the local part of User.email (the portion
+    before the first '@'), case-insensitively, using ILIKE '<token>@%'.
+    Returns unique active users in token order; tokens with no matching
+    active user are silently skipped.
+
+    Callers obtain tokens from `app.core.notifications.parse_mentions()`.
+    """
+    if not tokens:
+        return []
+    seen_ids: set[int] = set()
+    users: list[User] = []
+    for token in tokens:
+        user = (
+            db.query(User)
+            .filter(User.email.ilike(f"{token}@%"), User.is_active == 1)
+            .first()
+        )
+        if user and user.id not in seen_ids:
+            seen_ids.add(user.id)
+            users.append(user)
+    return users

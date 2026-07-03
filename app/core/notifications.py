@@ -11,11 +11,12 @@ Borrowed from reference CRMs:
   - Closed `kind` enum  → Pipedrive
   - Structured per-kind payload  → Attio
   - `actor_id` on events  → Attio, Salesforce
-  - `MentionEvent` kind  → Zoho (parsing deferred to a later slice)
+  - `MentionEvent` kind + `parse_mentions()`  → Zoho @mention / Salesforce Chatter
 """
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Literal, Union
 
@@ -151,3 +152,36 @@ def render_notification(event: NotificationEvent) -> str:
         return f"You were mentioned in a {event.entity_type}"
 
     raise TypeError(f"unknown event type: {type(event)!r}")  # pragma: no cover
+
+
+# ---------------------------------------------------------------------------
+# @mention parsing
+# Pure function: extracts @mention tokens from free-text note bodies.
+# Borrowed from Zoho CRM @mention (Zoho treats mention as a first-class
+# notification kind with its own payload — notifications-engine.md §2.5).
+# Salesforce Chatter uses the same @ prefix convention.
+# ---------------------------------------------------------------------------
+
+# Negative lookbehind (?<!\w) prevents matching the @ inside email addresses
+# (e.g. "alice@example.com" would otherwise produce a false "example.com" match).
+_MENTION_RE = re.compile(r"(?<!\w)@([A-Za-z0-9][A-Za-z0-9._+-]*)")
+
+
+def parse_mentions(body: str) -> list[str]:
+    """Extract @mention tokens from a free-text note body.
+
+    Returns lowercase unique tokens (the string after @) in first-appearance
+    order. Duplicates are discarded. The token must begin with a letter or
+    digit, so a bare `@` or whitespace-only suffix is ignored.
+
+    Resolution of tokens to User rows is handled by
+    `app.services.notifications.resolve_mentioned_users` (has DB I/O).
+    """
+    seen: set[str] = set()
+    result: list[str] = []
+    for m in _MENTION_RE.finditer(body or ""):
+        token = m.group(1).lower()
+        if token not in seen:
+            seen.add(token)
+            result.append(token)
+    return result
