@@ -62,8 +62,11 @@ class TaskOverdueEvent:
 class MentionEvent:
     """A user was @mentioned in a note body.
 
-    Parsing @user tokens from note bodies is deferred to a later slice;
-    this type is defined here so the schema is ready and consistent.
+    Tokens are parsed by `app.core.notifications.parse_mentions()` and
+    resolved to active User rows by `app.services.notifications.resolve_mentioned_users()`.
+    Trigger wiring in `app/routers/activities.py` emits one MentionEvent per
+    unique mentioned user (excluding the actor) whenever a note is created or
+    its body is updated.
     """
     actor_id: int
     entity_type: str                       # "activity" | "deal" | "contact"
