@@ -6,11 +6,18 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
+from app.core.history import (
+    ActivityCompletedEntry,
+    ActivityCreatedEntry,
+    ActivityDeletedEntry,
+    ActivityUpdatedEntry,
+)
 from app.core.notifications import MentionEvent, parse_mentions
 from app.core.recurrence import expand_rrule
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Activity, Notification, User
+from app.services.history import record_history
 from app.services.notifications import create_notification, resolve_mentioned_users
 
 router = APIRouter(prefix="/activities")
@@ -153,10 +160,27 @@ def create_activity(
         updated_at=now,
     )
     db.add(activity)
-    # Flush to get activity.id before emitting mention notifications;
-    # create_notification adds rows but does not commit (caller owns transaction).
+    # Flush to get activity.id before emitting notifications and history;
+    # neither record_history nor create_notification commit (caller owns transaction).
     db.flush()
     _emit_mention_notifications(db, activity=activity, actor=current_user, clk=clk)
+
+    # Salesforce Field History Tracking pattern: write history in same transaction.
+    record_history(
+        db,
+        entity_type="activity",
+        entity_id=activity.id,
+        event=ActivityCreatedEntry(
+            activity_id=activity.id,
+            activity_title=activity.title,
+            activity_type=activity.type,
+            actor_id=current_user.id,
+            deal_id=activity.deal_id,
+            contact_id=activity.contact_id,
+        ),
+        clk=clk,
+    )
+
     db.commit()
     db.refresh(activity)
     return _to_out(activity)
@@ -226,6 +250,21 @@ def update_activity(
     # Re-parse @mentions whenever the note body is explicitly updated.
     if body_was_updated:
         _emit_mention_notifications(db, activity=a, actor=current_user, clk=clk)
+
+    # Salesforce Field History Tracking pattern: write history in same transaction.
+    record_history(
+        db,
+        entity_type="activity",
+        entity_id=a.id,
+        event=ActivityUpdatedEntry(
+            activity_id=a.id,
+            activity_title=a.title,
+            activity_type=a.type,
+            actor_id=current_user.id,
+        ),
+        clk=clk,
+    )
+
     db.commit()
     db.refresh(a)
     return _to_out(a)
@@ -245,6 +284,21 @@ def complete_activity(
     now = clk.now().isoformat()
     a.completed_at = now
     a.updated_at = now
+
+    # Salesforce Field History Tracking pattern: write history in same transaction.
+    record_history(
+        db,
+        entity_type="activity",
+        entity_id=a.id,
+        event=ActivityCompletedEntry(
+            activity_id=a.id,
+            activity_title=a.title,
+            activity_type=a.type,
+            actor_id=current_user.id,
+        ),
+        clk=clk,
+    )
+
     db.commit()
     db.refresh(a)
     return _to_out(a)
@@ -254,13 +308,35 @@ def complete_activity(
 def delete_activity(
     activity_id: int,
     db: Session = Depends(get_db),
+    clk: Clock = Depends(get_clock),
     current_user: User = Depends(get_current_user),
 ):
     query = _apply_owner_filter(db.query(Activity), current_user)
     a = query.filter(Activity.id == activity_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Activity not found")
+
+    # Capture fields before deletion; entity_id survives as a plain INTEGER
+    # (no FK on HistoryEntry.entity_id — see activity-timeline.md §5).
+    activity_title = a.title
+    activity_type = a.type
+
     db.delete(a)
+
+    # Salesforce Field History Tracking pattern: write history in same transaction.
+    record_history(
+        db,
+        entity_type="activity",
+        entity_id=activity_id,
+        event=ActivityDeletedEntry(
+            activity_id=activity_id,
+            activity_title=activity_title,
+            activity_type=activity_type,
+            actor_id=current_user.id,
+        ),
+        clk=clk,
+    )
+
     db.commit()
     return Response(status_code=204)
 
