@@ -73,3 +73,27 @@ def client():
 
     app.dependency_overrides.pop(get_db, None)
     test_engine.dispose()
+
+
+@pytest.fixture
+def db_session(client):
+    """Direct SQLAlchemy session sharing the client fixture's in-memory DB.
+
+    Use to seed test data that has no public API endpoint yet (e.g. Notification rows
+    created by trigger wiring that belongs to a later slice).
+
+    Must be used *alongside* the client fixture so the DB override is active.
+    Both fixtures share the same StaticPool engine, so data inserted here is
+    immediately visible to API calls made through `client`.
+    """
+    override = app.dependency_overrides.get(get_db)
+    assert override is not None, "db_session requires the client fixture to be active"
+    gen = override()
+    db = next(gen)
+    try:
+        yield db
+    finally:
+        try:
+            next(gen)
+        except StopIteration:
+            pass
