@@ -8,11 +8,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock, get_clock
+from app.core.notifications import DealAssignedEvent, StageChangedEvent
 from app.core.stages import stage_probability, validate_transition
 from app.core.velocity import is_deal_rotting, stage_sla_days, time_in_stage_hours
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Contact, Deal, PipelineStage, StageTransition, User
+from app.services.notifications import create_notification
 
 router = APIRouter(prefix="/deals")
 
@@ -29,6 +31,7 @@ class DealUpdate(BaseModel):
     contact_id: Optional[int] = None
     stage_id: Optional[int] = None
     probability: Optional[float] = None
+    owner_id: Optional[int] = None
 
 
 class DealStageUpdate(BaseModel):
@@ -309,6 +312,25 @@ def update_deal_stage(
         occurred_at=now,
     )
     db.add(transition)
+
+    # Salesforce workflow-rule / Pipedrive deal_stage_changed trigger:
+    # notify the deal owner when someone else moves the deal to a new stage.
+    if body.stage != old_stage and deal.owner_id and deal.owner_id != current_user.id:
+        create_notification(
+            db,
+            recipient_id=deal.owner_id,
+            event=StageChangedEvent(
+                deal_id=deal.id,
+                deal_title=deal.title,
+                actor_id=current_user.id,
+                from_stage=old_stage,
+                to_stage=body.stage,
+            ),
+            entity_type="deal",
+            entity_id=deal.id,
+            clk=clk,
+        )
+
     db.commit()
     db.refresh(deal)
     return _to_out(deal)
@@ -328,10 +350,21 @@ def update_deal(
         raise HTTPException(status_code=404, detail="Deal not found")
 
     updates = body.model_dump(exclude_unset=True)
+
+    # Snapshot before-state so triggers can detect what changed.
+    old_stage = deal.stage
+    old_owner_id = deal.owner_id
+    stage_id_in_update = "stage_id" in updates
+
     if "contact_id" in updates:
         contact = db.query(Contact).filter(Contact.id == updates["contact_id"]).first()
         if not contact:
             raise HTTPException(status_code=404, detail="Contact not found")
+
+    if "owner_id" in updates and updates["owner_id"] is not None:
+        new_owner = db.query(User).filter(User.id == updates["owner_id"]).first()
+        if not new_owner:
+            raise HTTPException(status_code=404, detail="User not found")
 
     if "stage_id" in updates:
         ps = db.query(PipelineStage).filter(PipelineStage.id == updates["stage_id"]).first()
@@ -346,6 +379,47 @@ def update_deal(
     for field, value in updates.items():
         setattr(deal, field, value)
     deal.updated_at = clk.now().isoformat()
+
+    # HubSpot automation / Salesforce workflow-rule After-Save trigger:
+    # fire StageChangedEvent when stage_id update caused the stage name to change.
+    # Use old_owner_id so that when stage and owner both change in one PATCH,
+    # the notification goes to whoever owned the deal at the time of the stage change.
+    if stage_id_in_update and deal.stage != old_stage:
+        recipient = old_owner_id
+        if recipient and recipient != current_user.id:
+            create_notification(
+                db,
+                recipient_id=recipient,
+                event=StageChangedEvent(
+                    deal_id=deal.id,
+                    deal_title=deal.title,
+                    actor_id=current_user.id,
+                    from_stage=old_stage,
+                    to_stage=deal.stage,
+                ),
+                entity_type="deal",
+                entity_id=deal.id,
+                clk=clk,
+            )
+
+    # Salesforce / Pipedrive deal-assigned trigger:
+    # fire DealAssignedEvent when owner_id changes to a new user.
+    new_owner_id = deal.owner_id
+    if new_owner_id and new_owner_id != old_owner_id and new_owner_id != current_user.id:
+        create_notification(
+            db,
+            recipient_id=new_owner_id,
+            event=DealAssignedEvent(
+                deal_id=deal.id,
+                deal_title=deal.title,
+                actor_id=current_user.id,
+                previous_owner_id=old_owner_id,
+            ),
+            entity_type="deal",
+            entity_id=deal.id,
+            clk=clk,
+        )
+
     db.commit()
     db.refresh(deal)
     return _to_out(deal)
