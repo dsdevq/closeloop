@@ -10,7 +10,7 @@ from app.core.notifications import MentionEvent, parse_mentions
 from app.core.recurrence import expand_rrule
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import Activity, User
+from app.models import Activity, Notification, User
 from app.services.notifications import create_notification, resolve_mentioned_users
 
 router = APIRouter(prefix="/activities")
@@ -93,9 +93,19 @@ def _emit_mention_notifications(
     if not tokens:
         return
     mentioned = resolve_mentioned_users(db, tokens)
+    # Guard: skip users already notified for a mention on this activity so that
+    # editing a note (e.g. fixing a typo) doesn't re-ping the same recipient.
+    already_notified: set[int] = set(
+        row[0]
+        for row in db.query(Notification.recipient_id).filter(
+            Notification.kind == "mention",
+            Notification.entity_type == "activity",
+            Notification.entity_id == activity.id,
+        ).all()
+    )
     snippet = activity.body[:120]
     for user in mentioned:
-        if user.id == actor.id:
+        if user.id == actor.id or user.id in already_notified:
             continue
         create_notification(
             db,

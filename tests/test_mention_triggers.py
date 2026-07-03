@@ -312,3 +312,67 @@ def test_updating_non_note_to_have_mention_in_body_fires_no_notification(client,
     client.patch(f"/activities/{activity_id}", json={"body": "@kate can you follow up?"})
 
     assert _notifications_for(db_session, recipient_id=rep.id) == []
+
+
+def test_editing_note_without_changing_mentions_fires_no_duplicate_notification(client, db_session):
+    """Re-patching a note body that still mentions the same user produces no new notification.
+
+    Covers the typo-fix scenario: the mention was already notified on the first
+    write; subsequent edits that keep the same @token must not re-ping the user.
+    """
+    rep = _seed_user(db_session, email="liam@closeloop.com")
+
+    create_r = client.post("/activities", json={
+        "type": "note",
+        "title": "Initial note",
+        "body": "@liam please review this draft",
+    })
+    assert create_r.status_code == 201
+    activity_id = create_r.json()["id"]
+
+    # One notification from the initial create
+    assert len(_notifications_for(db_session, recipient_id=rep.id)) == 1
+
+    # Patch the body — @liam still present; only wording changed
+    patch_r = client.patch(f"/activities/{activity_id}", json={
+        "body": "@liam please review this updated draft (typo fixed)",
+    })
+    assert patch_r.status_code == 200
+
+    # Still exactly one notification — no duplicate
+    assert len(_notifications_for(db_session, recipient_id=rep.id)) == 1
+
+
+def test_editing_note_to_add_new_mention_fires_only_for_new_user(client, db_session):
+    """Patching a note to add a new @mention fires exactly one notification for the new user only.
+
+    The already-notified user from the original write must NOT receive a second
+    notification; only the newly-added user should receive one.
+    """
+    existing = _seed_user(db_session, email="mia@closeloop.com")
+    added = _seed_user(db_session, email="noah@closeloop.com")
+
+    create_r = client.post("/activities", json={
+        "type": "note",
+        "title": "Collab note",
+        "body": "@mia can you review this?",
+    })
+    assert create_r.status_code == 201
+    activity_id = create_r.json()["id"]
+
+    assert len(_notifications_for(db_session, recipient_id=existing.id)) == 1
+    assert len(_notifications_for(db_session, recipient_id=added.id)) == 0
+
+    # Edit adds @noah while keeping @mia
+    patch_r = client.patch(f"/activities/{activity_id}", json={
+        "body": "@mia and @noah both need to review this",
+    })
+    assert patch_r.status_code == 200
+
+    # @mia: still exactly one notification (no duplicate)
+    assert len(_notifications_for(db_session, recipient_id=existing.id)) == 1
+    # @noah: exactly one new notification
+    noah_notifs = _notifications_for(db_session, recipient_id=added.id)
+    assert len(noah_notifs) == 1
+    assert noah_notifs[0].kind == "mention"
+    assert noah_notifs[0].entity_id == activity_id
