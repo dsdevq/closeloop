@@ -258,6 +258,51 @@ class HistoryEntry(Base):
     actor = relationship("User", foreign_keys=[actor_id])
 
 
+class AutomationRule(Base):
+    """User-configurable workflow automation rule.
+
+    Evaluated inline at After-Save hook sites in route handlers alongside
+    create_notification() and record_history(), before db.commit().  The
+    evaluation loop is in app/services/automations.execute_automation_rules().
+
+    Trigger/condition/action model borrowed from:
+    - Salesforce Flow: After-Save execution timing, closed trigger-kind enum,
+      declarative {field, op, value} condition triples.
+    - HubSpot Workflows: single-entity-type scope per rule, enrollment criteria
+      as property filters.
+    - Zoho Workflow Rules: trigger → criteria → actions shape, "Create Task"
+      action with owner/due-offset params.
+    - Attio: trigger fires at mutation site (synchronously), notify_user as
+      first-class action, per-entity-type rule scoping.
+    - Pipedrive: closed trigger-event enum matching existing history kind set.
+    See .devclaw/research/workflow-automation.md §2–4 for full survey.
+
+    `conditions_json` shape: [{"field": "stage", "op": "eq", "value": "won"}, ...]
+    Empty list means "always fire when trigger matches."
+
+    `action_params_json` shape for notify_user:
+      {"recipient_id": 42, "message_template": "Deal {title} moved to {stage}"}
+    """
+    __tablename__ = "automation_rules"
+    __table_args__ = (
+        Index("ix_automation_rules_lookup", "entity_type", "trigger_kind", "is_active"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    entity_type = Column(String, nullable=False)              # "deal" / "contact" / "activity"
+    trigger_kind = Column(String, nullable=False)             # from SUPPORTED_TRIGGER_KINDS
+    conditions_json = Column(Text, nullable=False, default="[]")   # serialised list[Condition]
+    action_kind = Column(String, nullable=False)              # "notify_user" (slice 1)
+    action_params_json = Column(Text, nullable=False, default="{}")  # per action_kind
+    is_active = Column(Integer, nullable=False, default=1)    # 1 = active, 0 = disabled
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = Column(String, nullable=False)               # ISO-8601 UTC (ADR-0006)
+    updated_at = Column(String, nullable=False)               # ISO-8601 UTC (ADR-0006)
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
 class Notification(Base):
     """In-app notification for a single recipient user.
 

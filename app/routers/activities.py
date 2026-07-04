@@ -17,6 +17,7 @@ from app.core.recurrence import expand_rrule
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Activity, Notification, User
+from app.services.automations import execute_automation_rules
 from app.services.history import record_history
 from app.services.notifications import create_notification, resolve_mentioned_users
 
@@ -181,6 +182,23 @@ def create_activity(
         clk=clk,
     )
 
+    # Automation rules evaluation — After-Save, same transaction (workflow-automation.md §4).
+    execute_automation_rules(
+        db,
+        trigger_kind="activity_created",
+        entity_type="activity",
+        entity_snapshot={
+            "title": activity.title,
+            "type": activity.type,
+            "deal_id": activity.deal_id,
+            "contact_id": activity.contact_id,
+            "owner_id": activity.owner_id,
+            "completed_at": activity.completed_at,
+        },
+        actor=current_user,
+        clk=clk,
+    )
+
     db.commit()
     db.refresh(activity)
     return _to_out(activity)
@@ -303,6 +321,23 @@ def complete_activity(
             activity_type=a.type,
             actor_id=current_user.id,
         ),
+        clk=clk,
+    )
+
+    # Automation rules evaluation — After-Save, same transaction (workflow-automation.md §4).
+    execute_automation_rules(
+        db,
+        trigger_kind="activity_completed",
+        entity_type="activity",
+        entity_snapshot={
+            "title": a.title,
+            "type": a.type,
+            "deal_id": a.deal_id,
+            "contact_id": a.contact_id,
+            "owner_id": a.owner_id,
+            "completed_at": a.completed_at,
+        },
+        actor=current_user,
         clk=clk,
     )
 

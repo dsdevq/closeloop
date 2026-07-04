@@ -14,6 +14,7 @@ from app.core.lead_score import compute_lead_score
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Activity, Contact, Deal, User
+from app.services.automations import execute_automation_rules
 from app.services.history import record_history
 
 router = APIRouter(prefix="/contacts")
@@ -99,6 +100,23 @@ def create_contact(
             contact_name=contact.name,
             actor_id=current_user.id,
         ),
+        clk=clk,
+    )
+
+    # Automation rules evaluation — After-Save, same transaction (workflow-automation.md §4).
+    execute_automation_rules(
+        db,
+        trigger_kind="contact_created",
+        entity_type="contact",
+        entity_snapshot={
+            "name": contact.name,
+            "email": contact.email,
+            "phone": contact.phone,
+            "company": contact.company,
+            "owner_id": contact.owner_id,
+            "lead_score": contact.lead_score,
+        },
+        actor=current_user,
         clk=clk,
     )
 
@@ -257,6 +275,23 @@ def update_contact(
                 contact_name=contact.name,
                 actor_id=current_user.id,
             ),
+            clk=clk,
+        )
+
+        # Automation rules evaluation — guarded by same `if updates` as history.
+        execute_automation_rules(
+            db,
+            trigger_kind="contact_updated",
+            entity_type="contact",
+            entity_snapshot={
+                "name": contact.name,
+                "email": contact.email,
+                "phone": contact.phone,
+                "company": contact.company,
+                "owner_id": contact.owner_id,
+                "lead_score": contact.lead_score,
+            },
+            actor=current_user,
             clk=clk,
         )
 

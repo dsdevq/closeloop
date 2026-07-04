@@ -75,12 +75,33 @@ class MentionEvent:
     kind: Literal["mention"] = field(default="mention", init=False)
 
 
+@dataclass
+class AutomationTriggeredEvent:
+    """An automation rule fired and sent this in-app notification.
+
+    `message` is pre-rendered at execution time from the rule's message_template
+    and the entity snapshot (see render_message_template in app/core/automations.py).
+    Using a pre-rendered string here — rather than re-rendering at display time —
+    avoids a stale-data problem if the entity is mutated between fire and read.
+
+    Borrowed from Attio's "notify a team member" action (first-class action kind)
+    and Zoho's email-alert action: both carry a pre-composed message payload
+    rather than a template reference. See .devclaw/research/workflow-automation.md §2.4.
+    """
+    rule_id: int
+    rule_name: str
+    actor_id: int
+    message: str                           # rendered from message_template + entity_snapshot
+    kind: Literal["automation_triggered"] = field(default="automation_triggered", init=False)
+
+
 # Public union type used in function signatures
 NotificationEvent = Union[
     DealAssignedEvent,
     StageChangedEvent,
     TaskOverdueEvent,
     MentionEvent,
+    AutomationTriggeredEvent,
 ]
 
 # Single source of truth for the closed kind set
@@ -89,6 +110,7 @@ _KIND_MAP: dict[str, type] = {
     "stage_changed": StageChangedEvent,
     "task_overdue": TaskOverdueEvent,
     "mention": MentionEvent,
+    "automation_triggered": AutomationTriggeredEvent,
 }
 
 ALL_KINDS: frozenset[str] = frozenset(_KIND_MAP)
@@ -153,6 +175,9 @@ def render_notification(event: NotificationEvent) -> str:
 
     if isinstance(event, MentionEvent):
         return f"You were mentioned in a {event.entity_type}"
+
+    if isinstance(event, AutomationTriggeredEvent):
+        return event.message
 
     raise TypeError(f"unknown event type: {type(event)!r}")  # pragma: no cover
 

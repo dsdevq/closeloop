@@ -21,6 +21,7 @@ from app.core.velocity import is_deal_rotting, stage_sla_days, time_in_stage_hou
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Contact, Deal, PipelineStage, StageTransition, User
+from app.services.automations import execute_automation_rules
 from app.services.history import record_history
 from app.services.notifications import create_notification
 
@@ -121,6 +122,24 @@ def create_deal(
             deal_title=deal.title,
             actor_id=current_user.id,
         ),
+        clk=clk,
+    )
+
+    # Automation rules evaluation — After-Save, same transaction (workflow-automation.md §4).
+    execute_automation_rules(
+        db,
+        trigger_kind="deal_created",
+        entity_type="deal",
+        entity_snapshot={
+            "title": deal.title,
+            "value": deal.value,
+            "stage": deal.stage,
+            "stage_id": deal.stage_id,
+            "owner_id": deal.owner_id,
+            "contact_id": deal.contact_id,
+            "probability": deal.probability,
+        },
+        actor=current_user,
         clk=clk,
     )
 
@@ -382,6 +401,26 @@ def update_deal_stage(
             clk=clk,
         )
 
+    # Automation rules evaluation — only fires when the stage actually changed.
+    if body.stage != old_stage:
+        execute_automation_rules(
+            db,
+            trigger_kind="deal_stage_changed",
+            entity_type="deal",
+            entity_snapshot={
+                "title": deal.title,
+                "value": deal.value,
+                "stage": deal.stage,
+                "stage_id": deal.stage_id,
+                "owner_id": deal.owner_id,
+                "contact_id": deal.contact_id,
+                "probability": deal.probability,
+                "from_stage": old_stage,
+            },
+            actor=current_user,
+            clk=clk,
+        )
+
     db.commit()
     db.refresh(deal)
     return _to_out(deal)
@@ -515,6 +554,46 @@ def update_deal(
                 deal_title=deal.title,
                 actor_id=current_user.id,
             ),
+            clk=clk,
+        )
+
+    # Automation rules evaluation — mirrors the three history trigger kinds above.
+    # Build the snapshot once; reuse for all three potential trigger kinds.
+    deal_snapshot = {
+        "title": deal.title,
+        "value": deal.value,
+        "stage": deal.stage,
+        "stage_id": deal.stage_id,
+        "owner_id": deal.owner_id,
+        "contact_id": deal.contact_id,
+        "probability": deal.probability,
+        "from_stage": old_stage,
+    }
+    if stage_id_in_update and deal.stage != old_stage:
+        execute_automation_rules(
+            db,
+            trigger_kind="deal_stage_changed",
+            entity_type="deal",
+            entity_snapshot=deal_snapshot,
+            actor=current_user,
+            clk=clk,
+        )
+    if new_owner_id and new_owner_id != old_owner_id:
+        execute_automation_rules(
+            db,
+            trigger_kind="deal_assigned",
+            entity_type="deal",
+            entity_snapshot=deal_snapshot,
+            actor=current_user,
+            clk=clk,
+        )
+    if non_structural_updates:
+        execute_automation_rules(
+            db,
+            trigger_kind="deal_updated",
+            entity_type="deal",
+            entity_snapshot=deal_snapshot,
+            actor=current_user,
             clk=clk,
         )
 

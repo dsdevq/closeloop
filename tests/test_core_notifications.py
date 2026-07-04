@@ -50,7 +50,10 @@ def _mention(**kw) -> MentionEvent:
 
 
 def test_all_kinds_contains_expected_values():
-    assert ALL_KINDS == {"deal_assigned", "stage_changed", "task_overdue", "mention"}
+    assert ALL_KINDS == {
+        "deal_assigned", "stage_changed", "task_overdue", "mention",
+        "automation_triggered",
+    }
 
 
 # ── event_to_payload ──────────────────────────────────────────────────────────
