@@ -258,6 +258,29 @@ class HistoryEntry(Base):
     actor = relationship("User", foreign_keys=[actor_id])
 
 
+class AutomationRule(Base):
+    """Automation rule: Trigger → (optional) Conditions → Action.
+
+    conditions_json: JSON array of condition objects; NULL or "[]" means no
+    conditions and the rule fires unconditionally on any matching trigger event.
+    A non-empty string that is not valid JSON is treated as corrupted — the rule
+    is skipped rather than fired (fail-closed; see app/services/automations.py).
+
+    action_config_json: JSON object with action-specific parameters (keys depend
+    on action_type; defined per action handler in future slices).
+    """
+    __tablename__ = "automation_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    trigger_event = Column(String, nullable=False)     # e.g. "deal.stage_changed"
+    conditions_json = Column(Text)                     # nullable = unconditional
+    action_type = Column(String, nullable=False)       # e.g. "notify"
+    action_config_json = Column(Text, nullable=False, default="{}")
+    is_active = Column(Integer, nullable=False, default=1)
+    created_at = Column(String, nullable=False)
+
+
 class Notification(Base):
     """In-app notification for a single recipient user.
 
