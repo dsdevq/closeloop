@@ -258,6 +258,41 @@ class HistoryEntry(Base):
     actor = relationship("User", foreign_keys=[actor_id])
 
 
+class AutomationRule(Base):
+    """A workflow automation rule: trigger + conditions + action config.
+
+    trigger_type:
+      'after_save' — fires synchronously when a matching entity mutation is
+                     saved.  schedule_config_json is NULL for these rules.
+      'scheduled'  — fires on a time-based cadence described by
+                     schedule_config_json (serialised ScheduleConfig from
+                     app/core/automations.py).
+
+    conditions_json: JSON list of condition dicts evaluated against the entity.
+    action_config_json: JSON dict describing the action to perform.
+    schedule_config_json: non-null only for trigger_type='scheduled'.
+    last_fired_at: ISO-8601 UTC; tracks when a scheduled rule last fired.
+      NULL means the rule has never fired.  Only meaningful for scheduled rules
+      — the interval fence checked by is_rule_due() in app/core/automations.py.
+
+    Both trigger types share this single table (Salesforce Flow / Attio
+    Sequence pattern) — see .devclaw/research/workflow-automation.md §4.
+    """
+    __tablename__ = "automation_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    entity_type = Column(String, nullable=False)     # "deal" / "contact"
+    trigger_type = Column(String, nullable=False, default="after_save")  # see VALID_TRIGGER_TYPES
+    is_active = Column(Integer, nullable=False, default=1)  # 1=active, 0=inactive
+    conditions_json = Column(Text, nullable=False, default="[]")
+    action_config_json = Column(Text, nullable=False, default="{}")
+    schedule_config_json = Column(Text)              # NULL for after_save rules
+    last_fired_at = Column(String)                   # ISO-8601 UTC; NULL = never fired
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+
 class Notification(Base):
     """In-app notification for a single recipient user.
 
