@@ -1,0 +1,60 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Git metadata
+.git/
+.gitignore
+
+# Node / frontend artifacts (already handled inside the build stage)
+node_modules/
+frontend/node_modules/
+frontend/.vite/
+*.tsbuildinfo
+
+# Test and development files
+tests/
+e2e/
+test-results/
+playwright-report/
+playwright.config.ts
+conftest.py
+
+# Root-level dev config and lockfiles not needed inside the image
+package.json
+package-lock.json
+
+# Documentation
+docs/
+
+# Ephemeral databases — never bake data into the image
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# CI / agent / deploy tooling
+.github/
+.devclaw/
+.claude/
+.agent/
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Dev-only root files
+Makefile
+AGENTS.md
+CHANGELOG.md
+README.md

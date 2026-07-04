@@ -60,6 +60,16 @@ M1–M5 + v1 (auth) + v2 (accounts + pipeline stages) all **✅ Done**. See [doc
 - `app/routers/activities.py`: `create_activity` → `activity_created` (after existing `db.flush()`, before mention notifications); `update_activity` → `activity_updated`; `complete_activity` → `activity_completed`; `delete_activity` → `activity_deleted` (fields snapshotted before delete; `delete_activity` now accepts `clk` dependency).
 Tests in `tests/test_core_history.py` (pure serialisation round-trips) and `tests/test_history_triggers.py` (API integration). Field-level diffing (slice 3) and timeline UI (slice 4) remain deferred.
 
+## Docker / container image
+
+- **Multi-stage Dockerfile** (repo root): Node 20 stage builds Vite → `app/static/`; Python 3.12 runtime stage installs only prod deps (see `requirements-prod.txt`) and runs gunicorn with `UvicornWorker`.
+- **Non-root user**: UID/GID 1001 (`appuser`). `/app` and `/data` are `chown`'d to it before switching with `USER appuser`.
+- **Data persistence**: `DATABASE_URL` is read from env (`app/database.py`). Dockerfile sets it to `sqlite:////data/closeloop.db`. Mount `closeloop-data:/data` to persist across restarts. Local dev still defaults to `./closeloop.db`.
+- **Build cache**: `COPY requirements-prod.txt` + `RUN pip install` sits above the `COPY app` layer — dep installs are cached unless `requirements-prod.txt` changes.
+- **Runtime knobs**: `PORT` (default 8000), `WEB_CONCURRENCY` (default 4 gunicorn workers). See [docs/reference/env-vars.md](docs/reference/env-vars.md).
+- **Base image tags**: `python:3.12.9-slim-bookworm`, `node:20.18.0-alpine3.21`. Append `@sha256:<digest>` for immutable CI builds (see header comment in Dockerfile).
+- **`.dockerignore`**: covers `venv/`, `__pycache__/`, `.git/`, `tests/`, `e2e/`, `*.db`, IDE/agent dirs.
+
 ## When you learn something durable
 
 Add it to the right `docs/` page — do NOT back-fill this file. `AGENTS.md` stays lean; the tree grows.
