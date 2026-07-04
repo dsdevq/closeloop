@@ -40,21 +40,33 @@ jobs:
     concurrency:
       group: deploy-closeloop
       cancel-in-progress: false
+    # Job-level env so every step reads the same port value.
+    # APP_PORT is a repo Actions variable (not a secret) set to 8372 on lifekit-vps.
+    env:
+      APP_PORT: ${{ vars.APP_PORT }}
     steps:
       - uses: actions/checkout@v4
 
-      # Build the image OUTSIDE the container name so the atomic swap below
-      # keeps downtime to milliseconds. The image is tagged with the commit
-      # SHA + :latest so a bad deploy can be rolled back with `docker run`.
+      # Snapshot the image SHA the running container was started from.
+      # Used by the rollback step; empty string on first deploy (no container yet).
+      - name: Record running image
+        id: prev
+        run: |
+          PREV=$(docker inspect closeloop --format '{{.Image}}' 2>/dev/null || echo "")
+          echo "image=${PREV}" >> "$GITHUB_OUTPUT"
+
+      # Build BEFORE stopping the old container — keeps the gap between
+      # rm and run to milliseconds.  --cache-from :latest reuses layers
+      # even after a manual `docker system prune` wipes the build cache.
       - name: Build image
         run: |
           docker build \
+            --cache-from closeloop:latest \
             -t closeloop:${{ github.sha }} \
-            -t closeloop:latest .
+            -t closeloop:latest \
+            .
 
       - name: Swap singleton container
-        env:
-          APP_PORT: ${{ vars.APP_PORT }}
         run: |
           PORT=${APP_PORT:-8000}
           docker rm -f closeloop || true
@@ -62,18 +74,41 @@ jobs:
             -p "127.0.0.1:${PORT}:${PORT}" \
             -e "PORT=${PORT}" \
             -v closeloop-data:/data \
-            closeloop:latest
+            closeloop:${{ github.sha }}
 
       - name: Verify healthy
         run: |
           PORT=${APP_PORT:-8000}
           for i in $(seq 1 30); do
             if curl -fsS "http://127.0.0.1:${PORT}/health" > /dev/null; then
-              echo "closeloop is healthy on ${PORT}"
+              echo "closeloop is healthy on port ${PORT}"
               exit 0
             fi
             sleep 2
           done
-          echo "closeloop did not come up healthy on ${PORT}"
+          echo "closeloop did not come up on port ${PORT} within 60 s"
           docker logs --tail 100 closeloop || true
           exit 1
+
+      # If the new container failed its health check, restore the image that was
+      # running before this deploy so the service keeps serving while we investigate.
+      # Re-pins :latest to what is actually running so the tag stays accurate.
+      - name: Rollback on failure
+        if: failure() && steps.prev.outputs.image != ''
+        run: |
+          PORT=${APP_PORT:-8000}
+          PREV="${{ steps.prev.outputs.image }}"
+          echo "Rollback: restoring ${PREV}"
+          docker rm -f closeloop || true
+          docker run -d --name closeloop --restart unless-stopped \
+            -p "127.0.0.1:${PORT}:${PORT}" \
+            -e "PORT=${PORT}" \
+            -v closeloop-data:/data \
+            "${PREV}"
+          docker tag "${PREV}" closeloop:latest || true
+
+      # Remove layers that are no longer referenced by any tag.
+      # Runs regardless of outcome — keeps disk usage in check on the runner.
+      - name: Prune dangling images
+        if: always()
+        run: docker image prune -f

@@ -62,7 +62,7 @@ Tests in `tests/test_core_history.py` (pure serialisation round-trips) and `test
 
 ## CI workflows
 
-- **`.github/workflows/ci.yml`** — main gate (PRs + pushes to main): runs `python -m pytest -q` (all tests including `test_e2e_playwright.py`) + frontend typecheck on the self-hosted runner.  Triggers the deploy job on `main` push.
+- **`.github/workflows/ci.yml`** — main gate (PRs + pushes to main): runs `python -m pytest -q` (all tests including `test_e2e_playwright.py`) + frontend typecheck on the self-hosted runner.  On merge to `main`, the `deploy` job runs after `test` passes: snapshots the running container's image SHA for rollback, builds `closeloop:<sha>` + `closeloop:latest` using `--cache-from closeloop:latest` for layer reuse, swaps the singleton container (`docker rm -f` then `docker run`), polls `GET /health` up to 60 s; if the health check never passes it restores the previous image and re-pins `:latest` to match.
 - **`.github/workflows/ci-docker.yml`** — container gate (PRs + pushes): builds the full production image, then runs the pytest suite (excluding `test_e2e_playwright.py`) inside the container via volume-mounted `tests/` and on-the-fly `pip install` of test deps.  Validates the Dockerfile itself, not just the Python code.  Uses `--cache-from closeloop:test-cache` for layer reuse.
 
 ## Docker / container image
@@ -74,6 +74,7 @@ Tests in `tests/test_core_history.py` (pure serialisation round-trips) and `test
 - **Runtime knobs**: `PORT` (default 8000), `WEB_CONCURRENCY` (default 4 gunicorn workers). See [docs/reference/env-vars.md](docs/reference/env-vars.md).
 - **Base image tags**: `python:3.12.9-slim-bookworm`, `node:20.18.0-alpine3.21`. Append `@sha256:<digest>` for immutable CI builds (see header comment in Dockerfile).
 - **`.dockerignore`**: covers `venv/`, `__pycache__/`, `.git/`, `tests/`, `e2e/`, `*.db`, IDE/agent dirs.
+- **Local build/run**: `docker build -t closeloop:local .` — builds the full multi-stage image.  `docker run --rm -p 8000:8000 closeloop:local` — ephemeral run, no data volume (data lost on exit), open `http://localhost:8000`.  `docker run -d --name closeloop -p 8000:8000 -v closeloop-data:/data closeloop:local` — persistent singleton; re-run the same command to replace it.
 
 ## When you learn something durable
 
