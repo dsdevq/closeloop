@@ -1,8 +1,9 @@
+import asyncio
 import json
 import logging
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
@@ -155,13 +156,43 @@ def _backfill_stage_id(db):
     db.commit()
 
 
+# ---------------------------------------------------------------------------
+# Scheduled automation poller — runs every 60 s as a background task.
+# No existing APScheduler/Celery/cron runner in this stack (checked
+# requirements.txt); this minimal asyncio task is the lightweight poller
+# added per .devclaw/research/workflow-automation.md §6.
+# ---------------------------------------------------------------------------
+
+_POLLER_INTERVAL_SECONDS = 60
+
+
+async def _scheduled_automation_poller() -> None:
+    """Periodically scan and fire due scheduled automation rules."""
+    from app.core.clock import get_clock
+    from app.services.automations import check_scheduled_rules
+
+    while True:
+        await asyncio.sleep(_POLLER_INTERVAL_SECONDS)
+        db = SessionLocal()
+        try:
+            check_scheduled_rules(db, get_clock())
+        except Exception:
+            logger.exception("scheduled automation poller error")
+        finally:
+            db.close()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _run_migrations()
     _seed_and_backfill()
     _seed_pipeline_stages()
+    poller_task = asyncio.create_task(_scheduled_automation_poller())
     yield
+    poller_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await poller_task
 
 
 app = FastAPI(title="CloseLoop", version="2.0.0", lifespan=lifespan)
