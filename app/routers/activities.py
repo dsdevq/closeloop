@@ -227,8 +227,10 @@ def update_activity(
     if not a:
         raise HTTPException(status_code=404, detail="Activity not found")
     updates = body.model_dump(exclude_unset=True)
-    # Capture before any pops so we know whether the body content was replaced.
+    # Capture before any pops so we know whether the body content was replaced
+    # and whether the payload is non-empty at all.
     body_was_updated = "body" in updates
+    had_updates = bool(updates)
     if "type" in updates and updates["type"] not in _VALID_TYPES:
         raise HTTPException(
             status_code=422,
@@ -251,19 +253,22 @@ def update_activity(
     if body_was_updated:
         _emit_mention_notifications(db, activity=a, actor=current_user, clk=clk)
 
-    # Salesforce Field History Tracking pattern: write history in same transaction.
-    record_history(
-        db,
-        entity_type="activity",
-        entity_id=a.id,
-        event=ActivityUpdatedEntry(
-            activity_id=a.id,
-            activity_title=a.title,
-            activity_type=a.type,
-            actor_id=current_user.id,
-        ),
-        clk=clk,
-    )
+    # Only record history when the payload contains at least one field to update,
+    # mirroring update_deal's `if non_structural_updates:` guard (deals.py).
+    if had_updates:
+        # Salesforce Field History Tracking pattern: write history in same transaction.
+        record_history(
+            db,
+            entity_type="activity",
+            entity_id=a.id,
+            event=ActivityUpdatedEntry(
+                activity_id=a.id,
+                activity_title=a.title,
+                activity_type=a.type,
+                actor_id=current_user.id,
+            ),
+            clk=clk,
+        )
 
     db.commit()
     db.refresh(a)
@@ -281,6 +286,8 @@ def complete_activity(
     a = query.filter(Activity.id == activity_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Activity not found")
+    if a.completed_at is not None:
+        raise HTTPException(status_code=400, detail="Activity is already completed")
     now = clk.now().isoformat()
     a.completed_at = now
     a.updated_at = now

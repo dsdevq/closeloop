@@ -495,3 +495,112 @@ class TestActivityTriggers:
         event = event_from_meta(deleted[0].meta_json)
         assert isinstance(event, ActivityDeletedEntry)
         assert event.activity_type == "call"
+
+    def test_empty_payload_patch_produces_no_activity_updated_entry(self, client, db_session):
+        """PATCH with an empty body must not write an activity_updated history row."""
+        r = client.post("/activities", json={"type": "call", "title": "Stable Call"})
+        assert r.status_code == 201
+        activity_id = r.json()["id"]
+
+        # PATCH with empty payload — nothing actually changes
+        r = client.patch(f"/activities/{activity_id}", json={})
+        assert r.status_code == 200
+
+        entries = _history_for(db_session, entity_type="activity", entity_id=activity_id)
+        assert not any(e.kind == "activity_updated" for e in entries)
+
+    def test_double_complete_returns_400_and_no_extra_history(self, client, db_session):
+        """Calling complete twice must return 400 and not write a second ActivityCompletedEntry."""
+        r = client.post("/activities", json={"type": "meeting", "title": "Dup Complete"})
+        activity_id = r.json()["id"]
+
+        r = client.post(f"/activities/{activity_id}/complete")
+        assert r.status_code == 200
+
+        r = client.post(f"/activities/{activity_id}/complete")
+        assert r.status_code == 400
+
+        entries = _history_for(db_session, entity_type="activity", entity_id=activity_id)
+        completed = [e for e in entries if e.kind == "activity_completed"]
+        assert len(completed) == 1, "double-complete must not write a second ActivityCompletedEntry"
+
+    def test_import_activities_not_applicable_but_import_deals_creates_history(self, client, db_session):
+        """import_deals must produce one DealCreatedEntry per successfully imported row."""
+        contact = _seed_contact(db_session)
+        csv_text = f"contact_id,title,value,stage\n{contact.id},Import Deal Alpha,1000,lead\n{contact.id},Import Deal Beta,2000,qualified\n"
+
+        r = client.post("/deals/import", json={"csv": csv_text})
+        assert r.status_code == 200
+        assert r.json()["imported"] == 2
+
+        deals = db_session.query(Deal).filter(Deal.title.in_(["Import Deal Alpha", "Import Deal Beta"])).all()
+        assert len(deals) == 2
+        for deal in deals:
+            entries = _history_for(db_session, entity_type="deal", entity_id=deal.id)
+            created = [e for e in entries if e.kind == "deal_created"]
+            assert len(created) == 1
+            event = event_from_meta(created[0].meta_json)
+            assert isinstance(event, DealCreatedEntry)
+            assert event.deal_id == deal.id
+
+
+# ── Contact guard + import tests ──────────────────────────────────────────────
+
+
+class TestContactGuardsAndImport:
+    def test_empty_payload_patch_produces_no_contact_updated_entry(self, client, db_session):
+        """PATCH with an empty body must not write a contact_updated history row."""
+        r = client.post("/contacts", json={"name": "Stable Contact"})
+        assert r.status_code == 201
+        contact_id = r.json()["id"]
+
+        # PATCH with empty payload — nothing actually changes
+        r = client.patch(f"/contacts/{contact_id}", json={})
+        assert r.status_code == 200
+
+        entries = _history_for(db_session, entity_type="contact", entity_id=contact_id)
+        assert not any(e.kind == "contact_updated" for e in entries)
+
+    def test_import_contacts_creates_one_created_entry_per_row(self, client, db_session):
+        """import_contacts must produce one ContactCreatedEntry per successfully imported row."""
+        csv_text = "name,email,company\nAlice Import,alice.import@test.com,Acme\nBob Import,bob.import@test.com,Globex\n"
+
+        r = client.post("/contacts/import", json={"csv": csv_text})
+        assert r.status_code == 200
+        assert r.json()["imported"] == 2
+
+        from app.models import Contact as _Contact
+        contacts = db_session.query(_Contact).filter(
+            _Contact.name.in_(["Alice Import", "Bob Import"])
+        ).all()
+        assert len(contacts) == 2
+        for contact in contacts:
+            entries = _history_for(db_session, entity_type="contact", entity_id=contact.id)
+            created = [e for e in entries if e.kind == "contact_created"]
+            assert len(created) == 1
+            event = event_from_meta(created[0].meta_json)
+            assert isinstance(event, ContactCreatedEntry)
+            assert event.contact_id == contact.id
+            assert event.contact_name == contact.name
+
+    def test_import_contacts_error_row_produces_no_history(self, client, db_session):
+        """A row that fails import (e.g. duplicate email) must not produce a history entry."""
+        # First import to establish alice
+        csv_text = "name,email\nAlice Dup,alice.dup@test.com\n"
+        client.post("/contacts/import", json={"csv": csv_text})
+
+        # Second import with the same email — should produce an error row, not a history entry
+        csv_text2 = "name,email\nAlice Dup2,alice.dup@test.com\n"
+        r = client.post("/contacts/import", json={"csv": csv_text2})
+        assert r.status_code == 200
+        assert r.json()["imported"] == 0
+        assert len(r.json()["errors"]) == 1
+
+        from app.models import Contact as _Contact
+        contacts = db_session.query(_Contact).filter(_Contact.email == "alice.dup@test.com").all()
+        assert len(contacts) == 1
+        contact_id = contacts[0].id
+        entries = _history_for(db_session, entity_type="contact", entity_id=contact_id)
+        # Exactly one created entry (from the first successful import), no more
+        created = [e for e in entries if e.kind == "contact_created"]
+        assert len(created) == 1
