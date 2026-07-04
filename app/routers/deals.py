@@ -236,6 +236,19 @@ def import_deals(
         db.add(deal)
         db.flush()
 
+        # Salesforce Field History Tracking pattern: write history in same transaction.
+        record_history(
+            db,
+            entity_type="deal",
+            entity_id=deal.id,
+            event=DealCreatedEntry(
+                deal_id=deal.id,
+                deal_title=deal.title,
+                actor_id=current_user.id,
+            ),
+            clk=clk,
+        )
+
         transition = StageTransition(
             deal_id=deal.id,
             from_stage=None,

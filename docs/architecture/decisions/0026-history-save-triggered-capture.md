@@ -114,3 +114,19 @@ Entity-scoped retrieval borrowed from HubSpot Timeline API and Attio — always 
 - **FK on `entity_id`** — rejected (would destroy audit trail on entity delete; audit durability is the point of this table).
 - **Pre-rendered `message` string in DB** — rejected (same stale-message problem as in ADR-0025).
 - **Per-entity-type route** (`GET /deals/{id}/flow`) — rejected (Pipedrive pattern); single parameterised endpoint is simpler and consistent with the `Notification` table.
+
+## Design pivot: FieldHistory/app/core/timeline.py → HistoryEntry/app/core/history.py
+
+An earlier branch (commit 88855b7, "slice 1 — field-level FieldHistory model") proposed a finer-grained implementation: `app/core/timeline.py` defined a `FieldHistory` dataclass with `field_name`, `old_value`, and `new_value` fields, writing one row per changed field per mutation. This design mirrors Salesforce Field History Tracking at its most literal: every changed field produces a separate `FieldHistory` child record.
+
+**Why superseded by the coarser event-level model shipped in PR #46:**
+
+1. **Field-level diffing requires a before-save snapshot.** To know that `deal.title` changed from "Alpha" to "Beta", the handler must capture the old value before applying the mutation. This adds non-trivial coupling to every route handler and every field that participates in tracking. For slices 1–2, this overhead is not justified by the audit use case being addressed (timeline of what events happened, and when).
+
+2. **Event-level metadata is sufficient for this slice's scope.** A timeline rendered from `DealStageChangedEntry(from_stage="lead", to_stage="qualified")` fully answers the primary audit question — who changed what and when — without per-field rows. The `DealUpdatedEntry` kind captures that non-structural fields were touched; which specific fields changed is the slice 3 enhancement.
+
+3. **One row per mutation, not one row per field.** The event-level model produces a compact, readable timeline: three events for a deal that was created, had its stage changed, and was then renamed. The field-level model would produce potentially dozens of rows for a single PATCH that touches multiple fields — harder to paginate and render efficiently.
+
+**Explicit tradeoff recorded here:** An event-level timeline cannot answer "what was the deal title at 14:32 on Tuesday?" — it can only answer "who changed non-structural fields at 14:32 on Tuesday." Field-level `old_value`/`new_value` diffing (the precise answer) is the slice 3 deliverable, layered on top of the existing event model rather than replacing it. This is a deliberate, argued decision — not a silent replacement of the earlier branch's work.
+
+`app/core/timeline.py` from commit 88855b7 was never merged. `app/core/history.py` is the canonical implementation.

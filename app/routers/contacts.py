@@ -193,6 +193,18 @@ def import_contacts(
         db.add(contact)
         try:
             db.flush()
+            # Salesforce Field History Tracking pattern: write history in same transaction.
+            record_history(
+                db,
+                entity_type="contact",
+                entity_id=contact.id,
+                event=ContactCreatedEntry(
+                    contact_id=contact.id,
+                    contact_name=contact.name,
+                    actor_id=current_user.id,
+                ),
+                clk=clk,
+            )
             imported += 1
         except IntegrityError:
             db.rollback()
@@ -232,18 +244,21 @@ def update_contact(
         setattr(contact, field, value)
     contact.updated_at = clk.now().isoformat()
 
-    # Salesforce Field History Tracking pattern: write history in same transaction.
-    record_history(
-        db,
-        entity_type="contact",
-        entity_id=contact.id,
-        event=ContactUpdatedEntry(
-            contact_id=contact.id,
-            contact_name=contact.name,
-            actor_id=current_user.id,
-        ),
-        clk=clk,
-    )
+    # Only record history when the payload contains at least one field to update,
+    # mirroring update_deal's `if non_structural_updates:` guard (deals.py).
+    if updates:
+        # Salesforce Field History Tracking pattern: write history in same transaction.
+        record_history(
+            db,
+            entity_type="contact",
+            entity_id=contact.id,
+            event=ContactUpdatedEntry(
+                contact_id=contact.id,
+                contact_name=contact.name,
+                actor_id=current_user.id,
+            ),
+            clk=clk,
+        )
 
     db.commit()
     db.refresh(contact)
