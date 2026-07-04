@@ -60,6 +60,11 @@ M1–M5 + v1 (auth) + v2 (accounts + pipeline stages) all **✅ Done**. See [doc
 - `app/routers/activities.py`: `create_activity` → `activity_created` (after existing `db.flush()`, before mention notifications); `update_activity` → `activity_updated`; `complete_activity` → `activity_completed`; `delete_activity` → `activity_deleted` (fields snapshotted before delete; `delete_activity` now accepts `clk` dependency).
 Tests in `tests/test_core_history.py` (pure serialisation round-trips) and `tests/test_history_triggers.py` (API integration). Field-level diffing (slice 3) and timeline UI (slice 4) remain deferred.
 
+## CI workflows
+
+- **`.github/workflows/ci.yml`** — main gate (PRs + pushes to main): runs `python -m pytest -q` (all tests including `test_e2e_playwright.py`) + frontend typecheck on the self-hosted runner.  Triggers the deploy job on `main` push.
+- **`.github/workflows/ci-docker.yml`** — container gate (PRs + pushes): builds the full production image, then runs the pytest suite (excluding `test_e2e_playwright.py`) inside the container via volume-mounted `tests/` and on-the-fly `pip install` of test deps.  Validates the Dockerfile itself, not just the Python code.  Uses `--cache-from closeloop:test-cache` for layer reuse.
+
 ## Docker / container image
 
 - **Multi-stage Dockerfile** (repo root): Node 20 stage builds Vite → `app/static/`; Python 3.12 runtime stage installs only prod deps (see `requirements-prod.txt`) and runs gunicorn with `UvicornWorker`.

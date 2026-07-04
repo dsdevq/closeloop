@@ -1,0 +1,74 @@
+name: CI (Docker)
+
+# Validates the production container: builds the full multi-stage image
+# (Node/Vite frontend + Python runtime), then runs the pytest suite inside
+# the built container.  Playwright / browser tests are excluded here — they
+# run in the separate CI workflow that has npm + Chromium available.
+#
+# Caching strategy: the self-hosted runner is persistent (lifekit-vps), so
+# Docker's own layer cache survives between runs automatically.  We also tag
+# the image as :test-cache so `--cache-from` can find it even after a manual
+# `docker system prune`.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  docker-test:
+    name: Build & Test (container)
+    runs-on: self-hosted
+    concurrency:
+      group: ci-docker-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build the production image.  --cache-from reuses layers from the
+      # previous run (persisted on the runner under the :test-cache tag);
+      # --tag :test-cache overwrites that tag so the next run benefits too.
+      - name: Build production image
+        run: |
+          docker build \
+            --cache-from closeloop:test-cache \
+            -t closeloop:${{ github.sha }} \
+            -t closeloop:test-cache \
+            .
+
+      # Run the full Python test suite inside the built container.
+      #
+      # Why volume mounts?
+      #   .dockerignore excludes tests/ and conftest.py from the image (they
+      #   are dev-only artefacts); requirements.txt lists the test deps (pytest,
+      #   httpx) absent from requirements-prod.txt.  Mounting both at run-time
+      #   lets us test the exact binary that ships in production without
+      #   rebuilding the image.
+      #
+      # Why --user root?
+      #   appuser (uid 1001) has no home dir and cannot pip-install into the
+      #   system site-packages.  This is a throwaway test container — root is
+      #   acceptable; the image itself still runs as non-root in production.
+      #
+      # Why --ignore test_e2e_playwright.py?
+      #   That file shells out to npm + Playwright Chromium, which are not
+      #   present in the Python image.  Browser tests are owned by the
+      #   separate CI workflow.
+      - name: Run pytest in container
+        run: |
+          docker run --rm \
+            --user root \
+            -v "${{ github.workspace }}/tests:/app/tests:ro" \
+            -v "${{ github.workspace }}/requirements.txt:/tmp/requirements.txt:ro" \
+            closeloop:${{ github.sha }} \
+            sh -c "pip install --quiet --no-cache-dir -r /tmp/requirements.txt \
+                && python -m pytest -q \
+                     --ignore=tests/test_e2e_playwright.py \
+                     tests/"
+
+      # Remove the SHA tag; keep :test-cache for the next run's --cache-from.
+      - name: Remove ephemeral image tag
+        if: always()
+        run: docker rmi closeloop:${{ github.sha }} || true
