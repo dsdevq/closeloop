@@ -136,7 +136,7 @@ Five reference CRMs were surveyed. The patterns borrowed and rejected are summar
 | Pattern | Source | Rejected and why |
 |---------|--------|-----------------|
 | Visual flow canvas (drag-and-drop) | Salesforce Flow Builder | Expensive admin UI, out of scope for current scale; JSON rule stored in DB is sufficient |
-| Scheduled / time-based triggers | Salesforce, HubSpot, Zoho | No background worker; ADR-0010 prohibits outbound calls; no runtime component can fire rules on a schedule |
+| Scheduled / time-based triggers | Salesforce, HubSpot, Zoho | ~~No background worker; ADR-0010 prohibits outbound calls; no runtime component can fire rules on a schedule~~ **Reversal:** this pattern was subsequently implemented (see `DOMAIN.md §ScheduledTrigger`). A minimal asyncio poller (`_scheduled_automations_loop` in `app/main.py`) provides the background worker without violating ADR-0010 (no outbound calls). The full Salesforce "Scheduled Paths" pattern (trigger N days after a *field* value) remains deferred. |
 | Multi-action sequences / chaining | HubSpot, Pipedrive, Zoho | Requires persistent execution state and scheduler; one action per rule, composable by having multiple rules |
 | Delay actions within a rule | HubSpot, Salesforce | Requires persistent scheduler to resume paused rule instances; incompatible with synchronous After-Save execution |
 | OR-logic / complex boolean expression trees | Salesforce, HubSpot | AND-only conjunctive evaluation is sufficient for initial patterns; full expression trees add evaluator complexity |

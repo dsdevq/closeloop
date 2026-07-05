@@ -62,6 +62,29 @@ Correctness invariants: empty-payload PATCH never writes history; double-complet
 
 **Done:** Automation engine slice 1 — fail-closed condition evaluation. `AutomationRule` ORM model in `app/models.py` (`automation_rules` table): `trigger_event`, `conditions_json` (nullable = unconditional), `action_type`, `action_config_json`, `is_active`. `app/services/automations.py` provides `_parse_conditions`, `evaluate_conditions`, `execute_automation_rules`. Key correctness invariant: `_parse_conditions` raises `ConditionsParseError` for malformed conditions_json — callers in `execute_automation_rules` catch and skip (fail-closed). Intentionally empty conditions (`NULL`/`"[]"`) correctly fires unconditionally. Tests in `tests/test_core_automations.py` (unit + integration). Action dispatch (`_execute_action`) is a stub; action handlers added in future slices.
 
+**Done:** Automation engine slice 2 — scheduled trigger type + multi-worker race fix. `AutomationRule` extended with three new columns: `trigger_type` (`"after_save"` default | `"scheduled"`), `schedule_config_json` (JSON; required for scheduled rules), `last_triggered_at` (ISO-8601 UTC; NULL = never fired). Migration in `app/main.py` `_run_migrations()` v3 block adds these columns to existing `automation_rules` tables.
+
+**Where scheduled triggers are registered and evaluated:**
+- **Registration:** A scheduled `AutomationRule` is created with `trigger_type="scheduled"` and a `schedule_config_json` of `{"interval_minutes": N}` (recurring) or `{"run_once_at": "<ISO-8601>"}` (one-shot). No special endpoint; the rule row in `automation_rules` IS the registration.
+- **Evaluation:** `run_scheduled_automations(db, *, clk)` in `app/services/automations.py` — polls all active scheduled rules, calls `is_due()`, evaluates conditions, calls `_execute_action()` (the same dispatcher as after_save rules — one pipeline), updates `last_triggered_at` via CAS, and commits. Called every 60 s by `_scheduled_automations_loop()` (asyncio task in `app/main.py` lifespan).
+- **`execute_automation_rules`** now filters `trigger_type="after_save"` — scheduled rules are never accidentally evaluated in the after_save path.
+- **Fail-closed additions:** `_parse_schedule_config()` raises `ScheduleConfigParseError` for missing/blank/invalid config; `is_due()` returns False for expired `run_once_at` rules (already fired). Same fail-closed contract as PR #53 `_parse_conditions`.
+
+**Multi-worker CAS race fix (follow-up to PR #56 audit):** Gunicorn runs WEB_CONCURRENCY (default 4) workers; the asyncio poller runs independently in every process. Without protection, all workers can see the same rule as due and all fire it. Fix: before calling `_execute_action`, `run_scheduled_automations` issues an atomic `UPDATE automation_rules SET last_triggered_at = :now WHERE id = :id AND last_triggered_at IS NULL` (or `= :old_val` for non-NULL). If `rowcount == 0`, another worker already claimed the rule this cycle and the current worker skips. SQLite serialises concurrent writes through its write lock so exactly one UPDATE wins. See `DOMAIN.md §ScheduledTrigger` and `tests/test_automation_triggers.py::test_concurrent_workers_fire_exactly_once` for the regression test.
+
+**How to exercise scheduled triggers in tests (fast-forwarding reference time):**
+```python
+from datetime import datetime, timezone
+from app.services.automations import run_scheduled_automations
+
+class FixedClock:
+    def __init__(self, fixed): self._fixed = fixed
+    def now(self): return self._fixed
+
+fired = run_scheduled_automations(db_session, clk=FixedClock(some_time))
+```
+See `tests/test_automation_triggers.py` for the full test suite.
+
 ## Docker / container image
 
 - **Multi-stage Dockerfile** (repo root): Node 20 stage builds Vite → `app/static/`; Python 3.12 runtime stage installs only prod deps (see `requirements-prod.txt`) and runs gunicorn with `UvicornWorker`.

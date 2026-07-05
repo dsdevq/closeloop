@@ -261,10 +261,24 @@ class HistoryEntry(Base):
 class AutomationRule(Base):
     """Automation rule: Trigger → (optional) Conditions → Action.
 
+    trigger_type: "after_save" (fires inline at the mutation site, same transaction)
+      or "scheduled" (evaluated by the background poller at the configured interval).
+
     conditions_json: JSON array of condition objects; NULL or "[]" means no
     conditions and the rule fires unconditionally on any matching trigger event.
     A non-empty string that is not valid JSON is treated as corrupted — the rule
     is skipped rather than fired (fail-closed; see app/services/automations.py).
+
+    schedule_config_json: JSON object for scheduled rules; must be present when
+    trigger_type == "scheduled".  Supported shapes:
+      {"interval_minutes": N}        — recurring, fires every N minutes
+      {"run_once_at": "<ISO-8601>"}  — one-shot, fires once at the given UTC time
+    Missing or malformed → rule is skipped (fail-closed).
+
+    last_triggered_at: ISO-8601 UTC string; NULL = never fired.  Set by the
+    scheduler after each successful fire via a compare-and-swap UPDATE (see
+    run_scheduled_automations in app/services/automations.py) to prevent
+    double-fire when multiple Gunicorn workers poll concurrently.
 
     action_config_json: JSON object with action-specific parameters (keys depend
     on action_type; defined per action handler in future slices).
@@ -273,10 +287,13 @@ class AutomationRule(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    trigger_event = Column(String, nullable=False)     # e.g. "deal.stage_changed"
+    trigger_type = Column(String, nullable=False, default="after_save")  # "after_save" | "scheduled"
+    trigger_event = Column(String, nullable=False, default="")  # used by after_save rules
     conditions_json = Column(Text)                     # nullable = unconditional
     action_type = Column(String, nullable=False)       # e.g. "notify"
     action_config_json = Column(Text, nullable=False, default="{}")
+    schedule_config_json = Column(Text)                # required for scheduled rules; NULL for after_save
+    last_triggered_at = Column(String)                 # ISO-8601 UTC; NULL = never fired
     is_active = Column(Integer, nullable=False, default=1)
     created_at = Column(String, nullable=False)
 
