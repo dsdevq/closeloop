@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -10,9 +11,11 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 import app.models  # noqa: F401 — registers models on Base before create_all
+from app.core.clock import get_clock
 from app.core.security import hash_password
 from app.database import Base, SessionLocal, engine
 from app.models import Activity, Contact, Deal, PipelineStage, User
+from app.services.automations import run_scheduled_automations
 from app.routers.accounts import router as accounts_router
 from app.routers.activities import router as activities_router
 from app.routers.auth import router as auth_router
@@ -77,6 +80,42 @@ def _run_migrations():
             conn.commit()
         except Exception:
             conn.rollback()
+
+        # v3 — scheduled trigger support on automation_rules
+        v3_cols = [
+            ("automation_rules", "trigger_type TEXT NOT NULL DEFAULT 'after_save'"),
+            ("automation_rules", "schedule_config_json TEXT"),
+            ("automation_rules", "last_triggered_at TEXT"),
+        ]
+        for table, col_def in v3_cols:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_def}"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+
+async def _scheduled_automations_loop() -> None:
+    """Background poller for scheduled AutomationRules.
+
+    Sleeps 60 seconds between polls so the poller fires roughly every minute.
+    Each poll opens its own DB session and commits independently of any request
+    handler — the poller owns its transactions (unlike after_save rule evaluation
+    which runs within the router's transaction).
+
+    Exceptions are caught and logged so a transient error cannot kill the loop.
+    """
+    while True:
+        await asyncio.sleep(60)
+        db = SessionLocal()
+        try:
+            count = run_scheduled_automations(db, clk=get_clock())
+            if count:
+                logger.info("scheduled automations: %d rule(s) fired", count)
+        except Exception:
+            logger.exception("scheduled automations poller encountered an error")
+        finally:
+            db.close()
 
 
 def _seed_and_backfill():
@@ -161,7 +200,13 @@ async def lifespan(_app: FastAPI):
     _run_migrations()
     _seed_and_backfill()
     _seed_pipeline_stages()
+    poller_task = asyncio.create_task(_scheduled_automations_loop())
     yield
+    poller_task.cancel()
+    try:
+        await poller_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="CloseLoop", version="2.0.0", lifespan=lifespan)
