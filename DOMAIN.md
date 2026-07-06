@@ -292,6 +292,7 @@ public REST endpoint.  Self-notifications are suppressed (actor == recipient).
 **Trigger sites (slices 2–3):**
 - `app/routers/deals.py` — `StageChangedEvent` on stage change; `DealAssignedEvent` on owner change.
 - `app/routers/activities.py` — `MentionEvent` per unique mentioned user when a note is created or its body updated (note type only; call/email/meeting bodies skipped).
+- `app/services/automations.py` — `AutomationEvent` when an automation rule with `action_type="notify"` fires (see §v4 AutomationAction).
 
 **Related files:**
 - `app/core/notifications.py` — pure event model, serialisation, rendering, `parse_mentions()`
@@ -302,3 +303,62 @@ public REST endpoint.  Self-notifications are suppressed (actor == recipient).
 - `tests/test_notification_triggers.py` — after-save trigger wiring tests
 - `tests/test_mention_triggers.py` — @mention trigger tests
 - [ADR-0025](docs/architecture/decisions/0025-notifications-pull-model.md)
+
+---
+
+## v4 — AutomationAction (notify)
+
+**Introduced:** 2026-07-06 (automation engine slice 3)
+**Research basis:** `.devclaw/research/notifications-engine.md` §2–3; `.devclaw/research/workflow-automation.md`
+
+### AutomationAction — `notify`
+
+When an `AutomationRule` with `action_type = "notify"` fires (via `execute_automation_rules` or `run_scheduled_automations`), `_execute_notify_action` in `app/services/automations.py` creates an in-app `Notification` row through `create_notification()` — the same service entry point used by the after-save triggers in `app/routers/deals.py` and `app/routers/activities.py`.
+
+**`action_config_json` shape:**
+
+```json
+{"recipient_id": 42}
+```
+
+Static recipient — always notifies user 42.
+
+```json
+{"recipient_field": "owner_id"}
+```
+
+Dynamic recipient — resolves `context["owner_id"]` at fire time.  Useful for "notify the deal owner" rules where the owner varies per entity.
+
+**Fail-closed contract:**
+- `action_config_json` is not valid JSON or not an object → `ActionConfigParseError` → action skipped (logged at warning), same pattern as `ConditionsParseError` / `ScheduleConfigParseError`.
+- No `recipient_id` / `recipient_field` key present, or the resolved value is not a positive integer → no notification, debug log.  `"{}"` is explicitly a valid no-op placeholder (backward-compatible with existing test fixtures).
+
+**Self-notification suppression:** if `context["actor_id"]` equals the resolved `recipient_id`, no notification is created — same guard as the after-save triggers in `app/routers/deals.py`.
+
+**`AutomationEvent` payload (in `app/core/notifications.py`):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `kind` | `"automation"` | Discriminator key |
+| `rule_id` | `int` | ID of the `AutomationRule` that fired |
+| `rule_name` | `str` | Human-readable rule name at fire time |
+| `actor_id` | `int \| None` | User who triggered the after-save event; `None` for scheduled rules |
+
+`render_notification()` produces `'Automation rule "<rule_name>" was triggered'` at read time.  Storing `rule_id`/`rule_name` (not a pre-rendered string) avoids the stale-message problem on rule rename (rejected HubSpot / Pipedrive pattern).
+
+**Reference CRM patterns (borrowed vs. rejected):**
+
+| Pattern | Source | Decision |
+|---------|--------|----------|
+| Server-side automation notification (not a public REST endpoint) | HubSpot automation engine | Borrowed — `_execute_notify_action` is an internal service call |
+| Typed structured payload, not a pre-rendered string | Salesforce Custom Notification Type | Borrowed — `AutomationEvent` dataclass; rendered at read time |
+| `actor_id` as a first-class nullable field | Attio | Borrowed — `None` for scheduled rules (no human actor); set from `context["actor_id"]` for after-save rules |
+| `entity_type` + `entity_id` for frontend navigation | Pipedrive, Attio | Borrowed — forwarded from `context` to `Notification` row |
+| Embedding a full domain event (e.g. `StageChangedEvent`) in the action payload | — | Rejected — couples `action_config_json` to specific domain shapes; `entity_type`/`entity_id` on the Notification row is sufficient for navigation |
+| Background worker for dispatch | Zoho | Rejected — action fires inline in `_execute_action`, same transaction as the trigger |
+
+**Related files:**
+- `app/services/automations.py` — `_parse_notify_config`, `_resolve_notify_recipient`, `_execute_notify_action`, `_execute_action`
+- `app/core/notifications.py` — `AutomationEvent` dataclass, `render_notification()`
+- `app/services/notifications.py` — `create_notification()` (shared DB-write entry point)
+- `tests/test_automation_notification_action.py` — 36 unit + integration tests
