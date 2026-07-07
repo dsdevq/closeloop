@@ -44,7 +44,7 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-paper text-ink">
-      <AppHeader activeTab={activeTab} onTabChange={setActiveTab} user={user} onLogout={logout} />
+      <AppHeader activeTab={activeTab} onTabChange={setActiveTab} user={user} onLogout={logout} isAuthenticated={isAuthenticated} />
 
       <main className="px-4 py-5 lg:px-6">
         {activeTab === 'pipeline' && (

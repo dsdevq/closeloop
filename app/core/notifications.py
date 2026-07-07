@@ -75,12 +75,38 @@ class MentionEvent:
     kind: Literal["mention"] = field(default="mention", init=False)
 
 
+@dataclass
+class AutomationEvent:
+    """An automation rule with action_type='notify' fired.
+
+    Created by _execute_notify_action in app/services/automations when the
+    'notify' action type dispatches an in-app notification.
+
+    Borrowed from HubSpot's automation engine (category-keyed notification
+    created server-side by the automation engine, not a REST endpoint) and
+    Salesforce's custom notification type pattern (typed structured payload
+    rather than a pre-rendered string — avoids the stale-message problem).
+    actor_id is nullable because scheduled rules have no human actor.
+
+    Rejected: embedding the full domain-event payload (e.g. StageChangedEvent)
+    inside the automation action — that would couple the automation schema to
+    specific domain event shapes and require the action_config_json to carry
+    redundant context already available in the notification row's entity_type /
+    entity_id fields.
+    """
+    rule_id: int
+    rule_name: str
+    actor_id: int | None = None
+    kind: Literal["automation"] = field(default="automation", init=False)
+
+
 # Public union type used in function signatures
 NotificationEvent = Union[
     DealAssignedEvent,
     StageChangedEvent,
     TaskOverdueEvent,
     MentionEvent,
+    AutomationEvent,
 ]
 
 # Single source of truth for the closed kind set
@@ -89,6 +115,7 @@ _KIND_MAP: dict[str, type] = {
     "stage_changed": StageChangedEvent,
     "task_overdue": TaskOverdueEvent,
     "mention": MentionEvent,
+    "automation": AutomationEvent,
 }
 
 ALL_KINDS: frozenset[str] = frozenset(_KIND_MAP)
@@ -153,6 +180,9 @@ def render_notification(event: NotificationEvent) -> str:
 
     if isinstance(event, MentionEvent):
         return f"You were mentioned in a {event.entity_type}"
+
+    if isinstance(event, AutomationEvent):
+        return f'Automation rule "{event.rule_name}" was triggered'
 
     raise TypeError(f"unknown event type: {type(event)!r}")  # pragma: no cover
 
