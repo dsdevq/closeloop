@@ -82,6 +82,7 @@ def _emit_mention_notifications(
     activity: Activity,
     actor: User,
     clk: Clock,
+    is_new: bool = False,
 ) -> None:
     """Emit MentionEvent notifications for @mentions found in a note body.
 
@@ -93,6 +94,13 @@ def _emit_mention_notifications(
     Only fires for activities with type == "note"; other activity types
     (call, email, meeting) are silently skipped so reps can write email
     addresses or usernames in body fields without triggering spurious pings.
+
+    is_new=True skips the duplicate-notification guard.  On create, no prior
+    notifications can exist for this activity's ID legitimately, but SQLite
+    (without AUTOINCREMENT) reuses row-ids after deletion, so a stale
+    notification from a previously deleted activity with the same id would
+    wrongly suppress the new notification.  The guard is only meaningful on
+    edit, where the same activity is updated and we don't want to re-ping.
     """
     if activity.type != "note" or not activity.body:
         return
@@ -102,14 +110,17 @@ def _emit_mention_notifications(
     mentioned = resolve_mentioned_users(db, tokens)
     # Guard: skip users already notified for a mention on this activity so that
     # editing a note (e.g. fixing a typo) doesn't re-ping the same recipient.
-    already_notified: set[int] = set(
-        row[0]
-        for row in db.query(Notification.recipient_id).filter(
-            Notification.kind == "mention",
-            Notification.entity_type == "activity",
-            Notification.entity_id == activity.id,
-        ).all()
-    )
+    # Skipped on create (is_new=True) — see docstring for why.
+    already_notified: set[int] = set()
+    if not is_new:
+        already_notified = set(
+            row[0]
+            for row in db.query(Notification.recipient_id).filter(
+                Notification.kind == "mention",
+                Notification.entity_type == "activity",
+                Notification.entity_id == activity.id,
+            ).all()
+        )
     snippet = activity.body[:120]
     for user in mentioned:
         if user.id == actor.id or user.id in already_notified:
@@ -163,7 +174,7 @@ def create_activity(
     # Flush to get activity.id before emitting notifications and history;
     # neither record_history nor create_notification commit (caller owns transaction).
     db.flush()
-    _emit_mention_notifications(db, activity=activity, actor=current_user, clk=clk)
+    _emit_mention_notifications(db, activity=activity, actor=current_user, clk=clk, is_new=True)
 
     # Salesforce Field History Tracking pattern: write history in same transaction.
     record_history(

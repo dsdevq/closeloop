@@ -200,3 +200,165 @@ Full sequence for each rule in a `run_scheduled_automations` call:
 
 See `.devclaw/research/workflow-automation.md` for the full reference CRM survey and
 the borrowed-vs-rejected rationale.
+
+---
+
+## v3 — Notification
+
+**Introduced:** 2026-07-05 (notifications engine slices 1–3; PRs #41–#47)
+**Research basis:** `.devclaw/research/notifications-engine.md`
+
+### Notification
+
+A `Notification` is an in-app alert delivered to a specific recipient user.
+It is written by trigger wiring (after-save hooks in route handlers, same
+transaction as the domain mutation) and consumed by the pull API.  There is
+no WebSocket or Server-Sent Events delivery — the client polls
+`GET /notifications` (ADR-0025; Pipedrive / HubSpot pull-model pattern).
+
+**Schema (`notifications` table):**
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | |
+| `recipient_id` | INTEGER → `users.id` ON DELETE CASCADE | Always set; every notification targets one user |
+| `actor_id` | INTEGER → `users.id` ON DELETE SET NULL | Nullable — system events (e.g. `TaskOverdueEvent`) have no human actor |
+| `kind` | TEXT NOT NULL | Discriminator key matching a `NotificationEvent` subclass (see `app/core/notifications.py`) |
+| `entity_type` | TEXT | `"deal"` / `"activity"` / `"contact"` / `NULL` — navigation target for the frontend |
+| `entity_id` | INTEGER | PK of the linked entity; `NULL` for system events with no entity |
+| `payload_json` | TEXT NOT NULL | Serialised typed `NotificationEvent`; rendered to a message string at read time via `render_notification()` |
+| `read_at` | TEXT | `NULL` = unread; ISO-8601 UTC string when marked read |
+| `created_at` | TEXT NOT NULL | ISO-8601 UTC (injected clock, ADR-0006) |
+
+**Composite index:** `(recipient_id, read_at)` — supports the
+`WHERE recipient_id = ? AND read_at IS NULL` unread-count query.
+
+**Key design decisions (see `.devclaw/research/notifications-engine.md` §3):**
+
+*Borrowed:*
+- **`read_at` timestamp, not a boolean** — HubSpot stores `readAt` (ISO-8601)
+  rather than a flag; Attio does the same.  Enables "recently read" ordering
+  and an auditable read history.
+- **Structured `payload_json`, not a pre-rendered string** — Attio stores a
+  typed payload object and renders the message at read time.  Pre-rendered
+  strings (HubSpot, Pipedrive) show stale text after entity renames.
+  `render_notification()` is pure and independently testable.
+- **Pull model** — HubSpot, Pipedrive, and Attio all expose `GET /notifications`
+  polled by the client.  No WebSocket or SSE needed (compatible with ADR-0010).
+- **Closed `kind` enum** — Pipedrive documents a fixed set of notification types;
+  CloseLoop mirrors this as a discriminated-union in `app/core/notifications.py`
+  with `_KIND_MAP` as the single source of truth.
+- **`actor_id` as a first-class nullable FK** — Attio and Salesforce both surface
+  who triggered the notification.  Nullable because system events (overdue tasks)
+  have no human actor.
+- **`entity_type` + `entity_id`** — Pipedrive and Attio include the linked entity
+  so the frontend can navigate to the correct detail page without a join.
+- **Unread count as a separate lightweight endpoint** — Pipedrive exposes
+  `GET /notifications/get-unread-count`; CloseLoop mirrors as
+  `GET /notifications/unread-count`.
+- **`MentionEvent` as a first-class kind** — Zoho treats @mention as a distinct
+  notification type with its own payload schema.
+
+*Rejected:*
+- **Event bus / Streaming API** — Salesforce Bayeux / HubSpot SSE require a
+  socket manager and background infrastructure that CloseLoop does not have;
+  ADR-0010 prohibits outbound calls.
+- **Pre-rendered message string in DB** — HubSpot and Pipedrive store the
+  rendered string ("Alex moved Deal X to Proposal"), which becomes stale on
+  entity renames.
+- **Admin-managed notification type records** — Salesforce lets admins define
+  types via the Metadata API; over-engineered for CloseLoop's scope.
+- **Background polling workers for overdue-task detection** — Zoho uses
+  background jobs; CloseLoop has no worker machinery (creation is lazy /
+  synchronous, triggered at the point a query surfaces overdue items).
+- **Cursor-based pagination** — Attio uses `after_id`; simple `limit` is
+  sufficient for this slice.
+- **Day-grouping in the API response** — Zoho groups by date in the response;
+  CloseLoop returns a flat list (grouping is a frontend concern).
+
+**Pull API surface (`app/routers/notifications.py`):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/notifications` | List current user's notifications, newest first. `?unread_only=true`, `?limit=N` (default 50). |
+| GET | `/notifications/unread-count` | `{"unread_count": N}` — lightweight bell-badge query. |
+| POST | `/notifications/{id}/read` | Mark one notification read (idempotent). 404 if not found or owned by another user. |
+| POST | `/notifications/read-all` | Mark all current user's unread notifications read. Returns 204. |
+
+Notifications are created by service-layer trigger wiring
+(`app/services/notifications.py` → `create_notification()`), never by a
+public REST endpoint.  Self-notifications are suppressed (actor == recipient).
+
+**Trigger sites (slices 2–3):**
+- `app/routers/deals.py` — `StageChangedEvent` on stage change; `DealAssignedEvent` on owner change.
+- `app/routers/activities.py` — `MentionEvent` per unique mentioned user when a note is created or its body updated (note type only; call/email/meeting bodies skipped).
+- `app/services/automations.py` — `AutomationEvent` when an automation rule with `action_type="notify"` fires (see §v4 AutomationAction).
+
+**Related files:**
+- `app/core/notifications.py` — pure event model, serialisation, rendering, `parse_mentions()`
+- `app/services/notifications.py` — `create_notification()` (DB write entry point), `resolve_mentioned_users()`
+- `tests/test_core_notifications.py` — pure unit tests (event serialisation, render, parse_mentions)
+- `tests/test_notifications.py` — API integration tests
+- `tests/test_notification_model.py` — ORM model unit tests (state fields, cascade, SET NULL)
+- `tests/test_notification_triggers.py` — after-save trigger wiring tests
+- `tests/test_mention_triggers.py` — @mention trigger tests
+- [ADR-0025](docs/architecture/decisions/0025-notifications-pull-model.md)
+
+---
+
+## v4 — AutomationAction (notify)
+
+**Introduced:** 2026-07-06 (automation engine slice 3)
+**Research basis:** `.devclaw/research/notifications-engine.md` §2–3; `.devclaw/research/workflow-automation.md`
+
+### AutomationAction — `notify`
+
+When an `AutomationRule` with `action_type = "notify"` fires (via `execute_automation_rules` or `run_scheduled_automations`), `_execute_notify_action` in `app/services/automations.py` creates an in-app `Notification` row through `create_notification()` — the same service entry point used by the after-save triggers in `app/routers/deals.py` and `app/routers/activities.py`.
+
+**`action_config_json` shape:**
+
+```json
+{"recipient_id": 42}
+```
+
+Static recipient — always notifies user 42.
+
+```json
+{"recipient_field": "owner_id"}
+```
+
+Dynamic recipient — resolves `context["owner_id"]` at fire time.  Useful for "notify the deal owner" rules where the owner varies per entity.
+
+**Fail-closed contract:**
+- `action_config_json` is not valid JSON or not an object → `ActionConfigParseError` → action skipped (logged at warning), same pattern as `ConditionsParseError` / `ScheduleConfigParseError`.
+- No `recipient_id` / `recipient_field` key present, or the resolved value is not a positive integer → no notification, debug log.  `"{}"` is explicitly a valid no-op placeholder (backward-compatible with existing test fixtures).
+
+**Self-notification suppression:** if `context["actor_id"]` equals the resolved `recipient_id`, no notification is created — same guard as the after-save triggers in `app/routers/deals.py`.
+
+**`AutomationEvent` payload (in `app/core/notifications.py`):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `kind` | `"automation"` | Discriminator key |
+| `rule_id` | `int` | ID of the `AutomationRule` that fired |
+| `rule_name` | `str` | Human-readable rule name at fire time |
+| `actor_id` | `int \| None` | User who triggered the after-save event; `None` for scheduled rules |
+
+`render_notification()` produces `'Automation rule "<rule_name>" was triggered'` at read time.  Storing `rule_id`/`rule_name` (not a pre-rendered string) avoids the stale-message problem on rule rename (rejected HubSpot / Pipedrive pattern).
+
+**Reference CRM patterns (borrowed vs. rejected):**
+
+| Pattern | Source | Decision |
+|---------|--------|----------|
+| Server-side automation notification (not a public REST endpoint) | HubSpot automation engine | Borrowed — `_execute_notify_action` is an internal service call |
+| Typed structured payload, not a pre-rendered string | Salesforce Custom Notification Type | Borrowed — `AutomationEvent` dataclass; rendered at read time |
+| `actor_id` as a first-class nullable field | Attio | Borrowed — `None` for scheduled rules (no human actor); set from `context["actor_id"]` for after-save rules |
+| `entity_type` + `entity_id` for frontend navigation | Pipedrive, Attio | Borrowed — forwarded from `context` to `Notification` row |
+| Embedding a full domain event (e.g. `StageChangedEvent`) in the action payload | — | Rejected — couples `action_config_json` to specific domain shapes; `entity_type`/`entity_id` on the Notification row is sufficient for navigation |
+| Background worker for dispatch | Zoho | Rejected — action fires inline in `_execute_action`, same transaction as the trigger |
+
+**Related files:**
+- `app/services/automations.py` — `_parse_notify_config`, `_resolve_notify_recipient`, `_execute_notify_action`, `_execute_action`
+- `app/core/notifications.py` — `AutomationEvent` dataclass, `render_notification()`
+- `app/services/notifications.py` — `create_notification()` (shared DB-write entry point)
+- `tests/test_automation_notification_action.py` — 36 unit + integration tests

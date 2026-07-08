@@ -299,6 +299,43 @@ def test_mark_all_read_empty_list_is_no_op(client, db_session):
     assert client.get("/notifications/unread-count").json()["unread_count"] == 0
 
 
+# ── Corrupt payload graceful degradation ─────────────────────────────────────
+
+
+def test_list_malformed_payload_json_returns_empty_message(client, db_session):
+    """GET /notifications with a corrupt payload_json returns message='' not a 500.
+
+    The router's _to_out() function catches ValueError/TypeError from
+    event_from_payload() and falls back to message="" so a single malformed
+    row does not crash the entire notification list.  This is the defensive
+    degradation path — the notification is still returned with correct
+    metadata; only the rendered message is empty.
+    """
+    admin_id = _get_admin_id(client)
+    now = datetime.now(timezone.utc).isoformat()
+    corrupt = Notification(
+        recipient_id=admin_id,
+        actor_id=None,
+        kind="deal_assigned",
+        entity_type="deal",
+        entity_id=1,
+        payload_json='{"kind": "unknown_garbage", "junk": true}',
+        read_at=None,
+        created_at=now,
+    )
+    db_session.add(corrupt)
+    db_session.commit()
+    db_session.refresh(corrupt)
+
+    r = client.get("/notifications")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["id"] == corrupt.id
+    assert data[0]["kind"] == "deal_assigned"
+    assert data[0]["message"] == ""
+
+
 # ── Route isolation: /read-all is not matched as /{id}/read ──────────────────
 
 

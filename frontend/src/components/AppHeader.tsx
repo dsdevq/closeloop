@@ -1,11 +1,13 @@
 import { BarChart3, Bell, Building2, Calendar, ContactRound, LogOut, RefreshCw, TrendingUp, UserRound } from 'lucide-react';
 import type { Tab, User } from '../types';
+import { NotificationCenter } from '../features/notifications/NotificationCenter';
 
-export function AppHeader({ activeTab, onTabChange, user, onLogout }: {
+export function AppHeader({ activeTab, onTabChange, user, onLogout, isAuthenticated }: {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
   user: User;
   onLogout: () => void;
+  isAuthenticated: boolean;
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-950 text-white shadow-lg">
@@ -51,6 +53,7 @@ export function AppHeader({ activeTab, onTabChange, user, onLogout }: {
               {user.role || 'user'}
             </span>
           </div>
+          <NotificationCenter isAuthenticated={isAuthenticated} />
           <button
             className="icon-button border-white/25 bg-transparent text-slate-200 hover:text-white"
             onClick={onLogout}

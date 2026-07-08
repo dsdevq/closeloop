@@ -88,6 +88,19 @@ export type StatsData = {
   deals_by_stage?: Record<string, number>;
 };
 
+export type NotificationKind = 'deal_assigned' | 'stage_changed' | 'task_overdue' | 'mention';
+
+export type Notification = {
+  id: number;
+  kind: NotificationKind;
+  entity_type: string | null;
+  entity_id: number | null;
+  actor_id: number | null;
+  message: string;
+  read_at: string | null;
+  created_at: string;
+};
+
 // Insights — mirrors /insights/* API response shapes
 
 export type InsightsTrends = Record<string, number>;

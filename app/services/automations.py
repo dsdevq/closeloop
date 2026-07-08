@@ -41,7 +41,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.clock import Clock
+from app.core.notifications import AutomationEvent
 from app.models import AutomationRule
+from app.services.notifications import create_notification
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,17 @@ class ScheduleConfigParseError(ValueError):
 
     Callers of `_parse_schedule_config` MUST catch this and skip the rule.
     A scheduled rule with no valid config must never fire — fail-closed.
+    """
+
+
+class ActionConfigParseError(ValueError):
+    """Raised when action_config_json is not valid JSON or is not a JSON object.
+
+    Callers of `_parse_notify_config` catch this and skip the action (log +
+    no-op), consistent with the fail-closed pattern for conditions and schedule
+    config.  Missing recipient keys are NOT an error — they are handled by the
+    caller with a debug log so that test rules using '{}' as a placeholder do
+    not produce noisy warnings.
     """
 
 
@@ -373,6 +386,119 @@ def run_scheduled_automations(db: Session, *, clk: Clock) -> int:
     return fired
 
 
+def _parse_notify_config(config_json: str | None) -> dict:
+    """Parse action_config_json for the 'notify' action type.
+
+    Returns a parsed dict (may be empty — callers resolve the recipient and
+    handle missing keys with a debug log rather than raising, since '{}' is a
+    valid placeholder for unconfigured rules and is not a corruption risk).
+
+    Raises ActionConfigParseError when:
+    - JSON is syntactically invalid
+    - Payload is not a JSON object
+
+    Does NOT raise if recipient_id / recipient_field are absent.
+    """
+    stripped = config_json.strip() if config_json else ""
+    if not stripped:
+        return {}
+    try:
+        parsed = json.loads(stripped)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ActionConfigParseError(
+            f"action_config_json is not valid JSON: {exc!r}"
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise ActionConfigParseError(
+            f"action_config_json must be a JSON object, got {type(parsed).__name__}"
+        )
+    return parsed
+
+
+def _resolve_notify_recipient(config: dict, context: dict[str, Any]) -> int | None:
+    """Resolve the recipient user ID from action config or context.
+
+    Priority:
+    1. `recipient_id` (int) in config — static, hardcoded recipient.
+    2. `recipient_field` (str) in config — name of a context key whose value
+       is the recipient's user ID (e.g. "owner_id").
+
+    Returns None when the recipient cannot be determined (no key present, or the
+    resolved value is not an integer).  Callers treat None as "no recipient" and
+    skip the notification with a debug log.
+    """
+    if "recipient_id" in config:
+        val = config["recipient_id"]
+        if isinstance(val, int) and not isinstance(val, bool) and val > 0:
+            return val
+        return None
+    if "recipient_field" in config:
+        field_name = config["recipient_field"]
+        if isinstance(field_name, str):
+            val = context.get(field_name)
+            if isinstance(val, int) and not isinstance(val, bool) and val > 0:
+                return val
+    return None
+
+
+def _execute_notify_action(
+    db: Session,
+    rule: AutomationRule,
+    context: dict[str, Any],
+    clk: Clock,
+) -> None:
+    """Dispatch an in-app Notification for the 'notify' action type.
+
+    Resolves the recipient from action_config_json (static recipient_id or
+    dynamic recipient_field resolved from context).  Suppresses self-notifications
+    (actor_id == recipient_id) consistent with the After-Save trigger pattern in
+    app/routers/deals.py.  Calls create_notification() which adds the row to the
+    session without committing — the caller owns the transaction.
+
+    Reference CRM pattern: HubSpot automation engine creates in-app notifications
+    server-side (not via a public REST endpoint); Salesforce Custom Notification
+    Type carries a structured typed payload.  Attio's actor_id-on-event pattern
+    ensures the notification card shows who (or what) triggered it.
+    """
+    try:
+        config = _parse_notify_config(rule.action_config_json)
+    except ActionConfigParseError:
+        logger.warning(
+            "automation rule %d (%r): notify action skipped — malformed action_config_json",
+            rule.id,
+            rule.name,
+        )
+        return
+
+    recipient_id = _resolve_notify_recipient(config, context)
+    if recipient_id is None:
+        logger.debug(
+            "automation rule %d (%r): notify action — no recipient resolved"
+            " (set 'recipient_id' or 'recipient_field' in action_config_json)",
+            rule.id,
+            rule.name,
+        )
+        return
+
+    actor_id: int | None = context.get("actor_id")
+    if actor_id is not None and actor_id == recipient_id:
+        return  # suppress self-notification (same guard as After-Save triggers)
+
+    event = AutomationEvent(
+        rule_id=rule.id,
+        rule_name=rule.name,
+        actor_id=actor_id,
+    )
+    create_notification(
+        db,
+        recipient_id=recipient_id,
+        event=event,
+        entity_type=context.get("entity_type"),
+        entity_id=context.get("entity_id"),
+        clk=clk,
+    )
+
+
 def _execute_action(
     db: Session,
     rule: AutomationRule,
@@ -381,7 +507,11 @@ def _execute_action(
 ) -> None:
     """Dispatch to the action handler for rule.action_type.
 
-    Action handlers for individual action_type values are added in later slices.
+    Currently implemented action types:
+      - "notify": create an AutomationEvent Notification for the resolved recipient.
+
+    Unknown action types are logged at warning level and skipped — forward-compatible
+    with future action types added in later slices.
     """
     logger.debug(
         "automation rule %d action=%r trigger_type=%r fired; context_keys=%r",
@@ -390,3 +520,12 @@ def _execute_action(
         rule.trigger_type,
         list(context.keys()),
     )
+    if rule.action_type == "notify":
+        _execute_notify_action(db, rule, context, clk)
+    else:
+        logger.warning(
+            "automation rule %d (%r): unknown action_type=%r — skipping",
+            rule.id,
+            rule.name,
+            rule.action_type,
+        )
