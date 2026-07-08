@@ -1,6 +1,7 @@
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import type { Contact } from '../../types';
 import { SectionHeader } from '../../components/ui/SectionHeader';
+import { EntityTimeline } from '../../components/EntityTimeline';
 
 export function ContactDetailView({
   contact,
@@ -49,6 +50,7 @@ export function ContactDetailView({
           ))}
         </div>
       </div>
+      <EntityTimeline entityType="contact" entityId={contact.id} />
     </>
   );
 }

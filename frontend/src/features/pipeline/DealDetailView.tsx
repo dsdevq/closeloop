@@ -2,6 +2,7 @@ import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import type { Contact, Deal } from '../../types';
 import { money } from '../../lib/formatters';
 import { SectionHeader } from '../../components/ui/SectionHeader';
+import { EntityTimeline } from '../../components/EntityTimeline';
 
 export function DealDetailView({
   deal,
@@ -53,6 +54,7 @@ export function DealDetailView({
           ))}
         </div>
       </div>
+      <EntityTimeline entityType="deal" entityId={deal.id} />
     </>
   );
 }
