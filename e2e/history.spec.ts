@@ -99,8 +99,8 @@ test.describe('Deal timeline', () => {
 
       await expect(page.getByRole('heading', { name: dealTitle })).toBeVisible({ timeout: 5_000 });
 
-      // Timeline panel heading
-      await expect(page.getByRole('heading', { name: 'History' })).toBeVisible({ timeout: 8_000 });
+      // Timeline panel heading — exact: true avoids matching entity h1 titles that start with "History"
+      await expect(page.getByRole('heading', { name: 'History', exact: true })).toBeVisible({ timeout: 8_000 });
 
       // The deal_created entry label
       await expect(page.getByText(`Deal created: ${dealTitle}`)).toBeVisible({ timeout: 8_000 });
@@ -146,9 +146,11 @@ test.describe('Deal timeline', () => {
       await reloadDashboard(page);
       await page.getByText(dealTitle).first().click();
 
-      await expect(page.getByRole('heading', { name: 'History' })).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByRole('heading', { name: 'History', exact: true })).toBeVisible({ timeout: 8_000 });
+      // .first() guards against multiple matching entries when SQLite reuses entity IDs
+      // across test runs (history entries survive entity deletion by design — ADR-0026).
       await expect(
-        page.getByText(new RegExp(`Stage changed.*${dstStage.name}`)),
+        page.getByText(new RegExp(`Stage changed.*${dstStage.name}`)).first(),
       ).toBeVisible({ timeout: 8_000 });
     } finally {
       await request.delete(`/deals/${deal.id}`, { headers: auth(tok) });
@@ -184,7 +186,7 @@ test.describe('Contact timeline', () => {
       await page.getByRole('button', { name: contactName }).click();
 
       await expect(page.getByRole('heading', { name: contactName })).toBeVisible({ timeout: 5_000 });
-      await expect(page.getByRole('heading', { name: 'History' })).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByRole('heading', { name: 'History', exact: true })).toBeVisible({ timeout: 8_000 });
       await expect(
         page.getByText(`Contact created: ${contactName}`),
       ).toBeVisible({ timeout: 8_000 });
@@ -221,7 +223,7 @@ test.describe('Activity timeline', () => {
       await page.getByRole('button', { name: activityTitle }).click();
 
       await expect(page.getByRole('heading', { name: activityTitle })).toBeVisible({ timeout: 5_000 });
-      await expect(page.getByRole('heading', { name: 'History' })).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByRole('heading', { name: 'History', exact: true })).toBeVisible({ timeout: 8_000 });
       await expect(
         page.getByText(`Call logged: ${activityTitle}`),
       ).toBeVisible({ timeout: 8_000 });
