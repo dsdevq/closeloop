@@ -604,3 +604,49 @@ class TestContactGuardsAndImport:
         # Exactly one created entry (from the first successful import), no more
         created = [e for e in entries if e.kind == "contact_created"]
         assert len(created) == 1
+
+
+# ── GET /history actor_name field ─────────────────────────────────────────────
+
+
+class TestHistoryActorName:
+    def test_response_includes_actor_name_for_authenticated_actor(self, client, db_session):
+        """GET /history entries carry actor_name resolved from the actor relationship."""
+        r = client.post("/contacts", json={"name": "Actor Name Contact"})
+        assert r.status_code == 201
+        contact_id = r.json()["id"]
+
+        r = client.get(f"/history?entity_type=contact&entity_id={contact_id}")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) >= 1
+        entry = data[0]
+        assert "actor_name" in entry
+        # The authenticated user (admin fixture) has full_name set; actor_name must not be None
+        assert entry["actor_name"] is not None
+
+    def test_response_actor_name_matches_registered_user(self, client, db_session):
+        """actor_name in the history response matches the User.full_name of the acting user."""
+        # The client fixture authenticates as the admin user; retrieve that user's name
+        me = client.get("/auth/me").json()
+        full_name = me.get("full_name")
+
+        r = client.post("/contacts", json={"name": "Actor Match Contact"})
+        contact_id = r.json()["id"]
+
+        r = client.get(f"/history?entity_type=contact&entity_id={contact_id}")
+        data = r.json()
+        entry = data[0]
+        assert entry["actor_name"] == full_name
+
+    def test_response_includes_actor_id_alongside_actor_name(self, client, db_session):
+        """Both actor_id and actor_name are present and consistent in the response."""
+        me = client.get("/auth/me").json()
+
+        r = client.post("/contacts", json={"name": "Actor Fields Contact"})
+        contact_id = r.json()["id"]
+
+        r = client.get(f"/history?entity_type=contact&entity_id={contact_id}")
+        entry = r.json()[0]
+        assert entry["actor_id"] == me["id"]
+        assert entry["actor_name"] == me.get("full_name")

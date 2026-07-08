@@ -1,6 +1,6 @@
 # Activity Timeline — Reference CRM Research & Design Synthesis
 
-**Status:** Accepted — implementation complete through slice 2 (trigger wiring). Slice 3 (field-level diffing) and slice 4 (timeline UI) remain deferred.
+**Status:** Accepted — implementation complete through slices 1–2 (typed event model, trigger wiring) and slice 4 (timeline UI + actor resolution). Slice 3 (field-level diffing) remains deferred.
 **Date:** 2026-07-03
 **Scope of this doc:** Reference CRM survey, borrowed/rejected patterns, and slice-by-slice build plan for CloseLoop's entity-scoped audit history (activity timeline).
 

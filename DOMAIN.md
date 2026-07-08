@@ -362,3 +362,103 @@ Dynamic recipient — resolves `context["owner_id"]` at fire time.  Useful for "
 - `app/core/notifications.py` — `AutomationEvent` dataclass, `render_notification()`
 - `app/services/notifications.py` — `create_notification()` (shared DB-write entry point)
 - `tests/test_automation_notification_action.py` — 36 unit + integration tests
+
+---
+
+## v5 — Activity Timeline / Audit History
+
+**Introduced:** 2026-07-06 (slices 1–2 + 4; PRs #46, #62, #63)
+**Research basis:** `.devclaw/research/activity-timeline.md`
+
+### HistoryEntry
+
+A `HistoryEntry` is an immutable append-only record of a domain mutation, stored in the `history_entries` table.  It is distinct from a `Notification`:
+
+| Surface | Who reads it | Lifecycle |
+|---------|-------------|-----------|
+| `notifications` | Recipient user's inbox | Dismissable; per-user; only when there is a human recipient |
+| `history_entries` | Anyone with entity access | Append-only; per-entity; every domain mutation, unconditionally |
+
+Key properties:
+
+- `entity_type` — `"deal"` / `"contact"` / `"activity"`.
+- `entity_id` — plain `INTEGER`, **no FK constraint**. History entries survive deletion of the entity they describe (audit durability; Salesforce Field History Tracking pattern).
+- `actor_id` — nullable FK → `users(id) ON DELETE SET NULL`. Nullable to accommodate future system-generated entries (e.g. automated stage moves).  Resolved to `actor_name` (User.full_name) in API responses via `joinedload(HistoryEntry.actor)` — single-query eager load, no N+1.
+- `kind` — string discriminator; member of the closed enum defined by `_KIND_MAP` in `app/core/history.py`.
+- `meta_json` — serialised typed dataclass. Rendered at read time, never pre-rendered as a message string — avoids the stale-label problem on entity renames (HubSpot / Attio pattern).
+- `occurred_at` — ISO-8601 UTC, set by the injected clock (ADR-0006).
+
+Composite index on `(entity_type, entity_id, occurred_at)` — supports the canonical `WHERE entity_type=? AND entity_id=? ORDER BY occurred_at DESC` query.
+
+### Closed kind set
+
+`_KIND_MAP` in `app/core/history.py` is the single source of truth for the closed event-kind enum (Pipedrive `GET /deals/{id}/flow` pattern):
+
+| kind | Trigger site |
+|------|-------------|
+| `deal_created` | `POST /deals` |
+| `deal_stage_changed` | `PATCH /deals/{id}/stage` or `PATCH /deals/{id}` when `stage_id` changes |
+| `deal_assigned` | `PATCH /deals/{id}` when `owner_id` changes to a non-null user |
+| `deal_updated` | `PATCH /deals/{id}` when non-structural fields (title, value) are in the payload |
+| `deal_deleted` | `DELETE /deals/{id}` (title snapshotted before `db.delete()`) |
+| `contact_created` | `POST /contacts` |
+| `contact_updated` | `PATCH /contacts/{id}` when payload is non-empty |
+| `contact_deleted` | `DELETE /contacts/{id}` (name snapshotted before `db.delete()`) |
+| `activity_created` | `POST /activities` |
+| `activity_updated` | `PATCH /activities/{id}` when payload is non-empty |
+| `activity_completed` | `POST /activities/{id}/complete` |
+| `activity_deleted` | `DELETE /activities/{id}` (fields snapshotted before `db.delete()`) |
+
+### Trigger mechanism
+
+`record_history(db, *, entity_type, entity_id, event, clk)` in `app/services/history.py` is the single DB-write entry point.  It calls `db.add()` but does **NOT** commit — the caller (the route handler) owns the transaction.  Triggers fire inline in the route handler after the domain mutation, before `db.commit()`, mirroring the notification trigger pattern (ADR-0025) and the automation trigger pattern (§v1).  History capture is **unconditional on actor** — unlike notifications, which suppress self-actions, history records every mutation regardless of who performed it.
+
+### Correctness invariants
+
+- Empty-payload PATCH never writes history (guarded in `update_contact`, `update_activity`; non-structural-field guard in `update_deal`).
+- `complete_activity` returns HTTP 400 on double-complete; history entry is written exactly once per completion.
+- Bulk import (`import_deals`, `import_contacts`) produces one `deal_created` / `contact_created` entry per successfully imported row — the audit trail covers imports.
+- Delete handlers snapshot the entity name/title before `db.delete()` so the history entry carries a human-readable label for the now-deleted entity.
+
+### Structured payload (meta_json)
+
+Each typed history event dataclass carries exactly the fields needed to describe the event — no catch-all nullable columns, no flat message string.  `event_to_meta()` serialises to `meta_json`; `event_from_meta()` deserialises back to the typed dataclass.  The UI `renderLabel(kind, meta)` function maps each kind to a human-readable string at read time (HubSpot Timeline API / Attio pattern).
+
+### API surface
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/history` | Bearer | List history entries for a single entity, newest-first. Required: `?entity_type=deal\|contact\|activity` and `?entity_id=N`. Optional: `?limit=N` (default 50). 422 if `entity_type` is unknown or `limit < 1`. Response includes `actor_name` resolved from `User.full_name`. |
+
+No `POST /history` — entries are written exclusively by trigger wiring.  This matches Salesforce, HubSpot, and Attio: the history creation path is internal to the application.
+
+### Timeline UI
+
+`frontend/src/components/EntityTimeline.tsx` is a shared React component: fetches `/history?entity_type=X&entity_id=N` via `apiFetch`, renders a bulleted list of labelled events (kind → human-readable string via `renderLabel`), timestamps, and actor names; handles loading / error / empty states.  Wired into all three detail views: `DealDetailView`, `ContactDetailView`, `ActivityDetailView`.  `HistoryEntry` TypeScript type lives in `frontend/src/types.ts`.
+
+### Reference CRM analogues
+
+| Pattern | Borrowed from | Used in CloseLoop |
+|---------|--------------|-------------------|
+| Save-triggered, same-transaction write | Salesforce Field History Tracking | `record_history()` called inline in route handler, before `db.commit()` |
+| History survives entity deletion | Salesforce, Attio | `entity_id` is plain `INTEGER` — no FK constraint |
+| `actor_id` on every row (resolved at read time) | Salesforce, Attio | `HistoryEntry.actor_id` nullable FK; `actor_name` resolved via eager join in `GET /history` |
+| Structured payload per kind, no pre-rendered string | HubSpot Timeline API, Attio | `meta_json` = serialised typed dataclass; rendered at read time by `renderLabel` |
+| Closed enum of event kinds (`_KIND_MAP`) | Pipedrive `GET /deals/{id}/flow` | `_KIND_MAP` in `app/core/history.py` — single source of truth |
+| `kind` string as discriminator | Pipedrive, Attio | `kind: Literal["..."]` field on each dataclass; `HistoryEntry.kind` column |
+| Entity-scoped retrieval (not cross-entity) | HubSpot Timeline API, Attio | `GET /history?entity_type=deal&entity_id=N` — always a single entity per query |
+| No `POST /history` creation endpoint | HubSpot, Attio | Entries written exclusively by trigger wiring |
+
+| Pattern | Source | Rejected and why |
+|---------|--------|-----------------|
+| Async outbox / event queue for history writes | — | No background worker; ADR-0010 prohibits outbound calls; same-transaction write is simpler and gives atomicity |
+| SQLAlchemy ORM hooks (`after_flush` / `after_commit`) | — | Hidden second trigger mechanism; contradicts explicit inline pattern established for notifications and automations |
+| Database-layer CDC | Zoho | Application-layer inline wiring gives equivalent atomicity guarantees; no storage infrastructure needed for SQLite single-process model |
+| Separate audit microservice | Zoho | No microservice infrastructure; single-process deployment is the product invariant |
+| FK on `entity_id` | — | Would cascade-delete history on entity deletion; audit durability is the point |
+| Pre-rendered `message` string in DB | HubSpot (older endpoints), Pipedrive variants | Stale-message problem when entities are renamed; `meta_json` + `renderLabel` at read time avoids it |
+| Per-entity-type route (`GET /deals/{id}/flow`) | Pipedrive | Single parameterised endpoint is simpler and consistent with the `Notification` pull-API shape |
+| Cursor-based pagination (`after_id`) | Attio | `?limit=N` is sufficient for current data volumes; cursor pagination deferred to a later slice |
+| Field-level granularity (one row per changed field) | Salesforce Field History Tracking | Deferred to a future slice; event-level entries are sufficient for slices 1–2 and 4 |
+
+See `.devclaw/research/activity-timeline.md` for the full reference CRM survey and the slice-by-slice build plan.

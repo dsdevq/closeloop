@@ -125,3 +125,14 @@ export type InsightsCohortSource = {
   win_rate: number;
 };
 export type InsightsCohorts = Record<string, InsightsCohortSource>;
+
+export type HistoryEntry = {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  actor_id: number | null;
+  actor_name: string | null;
+  kind: string;
+  meta_json: string;
+  occurred_at: string;
+};
