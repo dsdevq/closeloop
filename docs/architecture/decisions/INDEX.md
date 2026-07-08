@@ -38,6 +38,7 @@ Every non-trivial design decision made in CloseLoop, one file per decision, numb
 | [0024](0024-insights-svg-chart-primitives.md) | Insights charts are hand-rolled SVG primitives, no charting library | insights, frontend, charts, dependencies |
 | [0025](0025-notifications-pull-model.md) | Notifications engine — typed event model and pull-based retrieval | notifications, data-model, api, architecture |
 | [0026](0026-history-save-triggered-capture.md) | Activity timeline — save-triggered audit history capture | history, audit, data-model, api, architecture |
+| [0027](0027-singleton-container-swap-cicd.md) | CI/CD — multi-stage Dockerfile, singleton container swap, test-inside-container gate | ci, docker, deploy, architecture |
 
 ## Superseded (historical)
 

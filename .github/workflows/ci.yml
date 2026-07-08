@@ -32,6 +32,11 @@ jobs:
           npm ci --silent
           npm run typecheck
 
+      - name: Frontend lint
+        run: |
+          cd frontend
+          npm run lint
+
   deploy:
     name: Deploy to lifekit-vps
     needs: test
