@@ -22,6 +22,7 @@ A self-contained CRM: **Python + FastAPI + SQLite** backend, **React + Vite + Ta
 - **MUST use the injected clock** (`clock` kwarg / `clk.now`) in all time-dependent code — never call `datetime.utcnow()` directly. Tests depend on this. See [ADR-0006](docs/architecture/decisions/0006-injected-clock.md).
 - **MUST NOT mock the database in tests.** Use the in-memory SQLite via the `client` fixture. See [ADR-0005](docs/architecture/decisions/0005-static-pool-test-engine.md).
 - **MUST NOT change `playwright.config.ts` `stdout: 'ignore', stderr: 'ignore'`.** ARM64 pipe buffer fills, uvicorn blocks on log writes, tests get ERR_CONNECTION_REFUSED. See [docs/guides/development.md](docs/guides/development.md#arm64-pipe-gotcha---do-not-undo).
+- **Playwright e2e uses a persistent file-based DB** (`closeloop.db`), NOT in-memory — data from prior runs accumulates. New e2e tests that depend on a clean state MUST reset via API at the top of the test (e.g. `POST /notifications/read-all`) rather than assuming a fresh DB.
 - **MUST use `apiFetch`** (from `frontend/src/lib/api.ts`), never bare `fetch()`. Auth-aware; handles 401 → login redirect consistently.
 - **MUST NOT introduce runtime outbound network calls.** Product invariant; enforced by `test_no_outbound_network.py`. See [ADR-0010](docs/architecture/decisions/0010-outbox-queue-only.md).
 - **MUST NOT use `dangerouslySetInnerHTML`** for user-supplied data.
