@@ -1,6 +1,6 @@
 # Activity Timeline — Reference CRM Research & Design Synthesis
 
-**Status:** Accepted — implementation complete through slice 2 (trigger wiring). Slice 3 (field-level diffing) and slice 4 (timeline UI) remain deferred.
+**Status:** Accepted — implementation complete through slices 1–2 (typed event model, trigger wiring) and slice 4 (timeline UI + actor resolution). Slice 3 (field-level diffing) remains deferred.
 **Date:** 2026-07-03
 **Scope of this doc:** Reference CRM survey, borrowed/rejected patterns, and slice-by-slice build plan for CloseLoop's entity-scoped audit history (activity timeline).
 
@@ -165,12 +165,15 @@ Five reference CRMs were surveyed. The patterns borrowed and rejected are summar
 
 ---
 
-### Slice 4 (later): Timeline UI
+### Slice 4 (done — PRs #60, #61): Timeline UI
 
 **Deliverables:**
-- Timeline panel in deal, contact, and activity detail views
-- Render function per kind (pure TypeScript / React)
-- Actor resolution (user display name from `actor_id`)
+- `frontend/src/components/EntityTimeline.tsx` — shared React component; fetches `GET /history`, renders bulleted list with `renderLabel(kind, meta)`, timestamp, actor name; handles loading / error / empty states.
+- `HistoryEntry` TypeScript type added to `frontend/src/types.ts`.
+- Wired into `DealDetailView`, `ContactDetailView`, `ActivityDetailView`.
+- `GET /history` response extended with `actor_name` (User.full_name via `joinedload`).
+- Actor-name API tests in `tests/test_history_triggers.py::TestHistoryActorName`.
+- E2e smoke tests in `e2e/history.spec.ts` (deal / contact / activity timeline panels).
 
 ---
 
