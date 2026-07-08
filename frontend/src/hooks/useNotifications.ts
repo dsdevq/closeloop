@@ -28,12 +28,14 @@ export function useNotifications(isAuthenticated: boolean) {
     if (!isAuthenticated) return;
     setLoading(true);
     try {
-      const res = await apiFetch('/notifications?limit=50');
+      // Fetch only unread notifications: the bell-dropdown is an action surface,
+      // not a history view.  This also makes the empty-state deterministic across
+      // test runs — mark-all-read → unread_only returns [] → empty state shows.
+      const res = await apiFetch('/notifications?limit=50&unread_only=true');
       if (res.ok) {
         const data = await res.json() as Notification[];
         setNotifications(data);
-        const unread = data.filter((n) => n.read_at === null).length;
-        setUnreadCount(unread);
+        setUnreadCount(data.length);
       }
     } catch {
       // network error — keep existing list

@@ -102,16 +102,20 @@ async function registerRepAndGetToken(
 // ── Navigation / shell tests ──────────────────────────────────────────────────
 
 test.describe('Notification bell — shell', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, request }) => {
     await loginAndWait(page);
+    // Drain any unread notifications left from prior tests / runs so the
+    // "no badge" assertion below is never polluted by stale DB state.
+    const tok = await bearerToken(page);
+    await request.post('/notifications/read-all', { headers: auth(tok) });
   });
 
   test('bell icon is visible in the header', async ({ page }) => {
     await expect(page.getByTestId('notification-bell')).toBeVisible();
   });
 
-  test('no badge when there are no notifications', async ({ page }) => {
-    // Badge only renders when unread_count > 0
+  test('no badge when there are no unread notifications', async ({ page }) => {
+    // Badge only renders when unread_count > 0; beforeEach drained any leftovers.
     await expect(page.getByTestId('notification-badge')).not.toBeVisible();
   });
 
@@ -162,6 +166,9 @@ test.describe('Notification content and mark-as-read', () => {
     await loginAndWait(page);
     const adminTok = await bearerToken(page);
 
+    // Drain stale unread state so only this test's notification affects the badge count.
+    await request.post('/notifications/read-all', { headers: auth(adminTok) });
+
     // Register the rep (idempotent — 422 means already exists)
     const repTok = await registerRepAndGetToken(request, adminTok, REP_EMAIL, REP_PASS);
 
@@ -203,6 +210,10 @@ test.describe('Notification content and mark-as-read', () => {
   test('clicking an unread notification marks it read and removes badge dot', async ({ page, request }) => {
     await loginAndWait(page);
     const adminTok = await bearerToken(page);
+
+    // Drain stale unread state so marking this test's single notification as read
+    // is guaranteed to drop the unread count to 0 (no cross-test contamination).
+    await request.post('/notifications/read-all', { headers: auth(adminTok) });
 
     const repTok = await registerRepAndGetToken(request, adminTok, REP_EMAIL, REP_PASS);
 
@@ -249,6 +260,10 @@ test.describe('Notification content and mark-as-read', () => {
   }) => {
     await loginAndWait(page);
     const adminTok = await bearerToken(page);
+
+    // Drain stale unread state so the badge is guaranteed to reflect only this
+    // test's notification, making the mark-all-read → 0-unread assertion reliable.
+    await request.post('/notifications/read-all', { headers: auth(adminTok) });
 
     const repTok = await registerRepAndGetToken(request, adminTok, REP_EMAIL, REP_PASS);
 
