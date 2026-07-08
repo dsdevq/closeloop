@@ -10,9 +10,8 @@ are written exclusively by trigger wiring in domain routers.
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from app.core.history import event_from_meta
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import HistoryEntry, User
@@ -28,6 +27,7 @@ def _to_out(entry: HistoryEntry) -> dict:
         "entity_type": entry.entity_type,
         "entity_id": entry.entity_id,
         "actor_id": entry.actor_id,
+        "actor_name": entry.actor.full_name if entry.actor else None,
         "kind": entry.kind,
         "meta_json": entry.meta_json,
         "occurred_at": entry.occurred_at,
@@ -57,6 +57,7 @@ def list_history(
 
     query = (
         db.query(HistoryEntry)
+        .options(joinedload(HistoryEntry.actor))
         .filter(
             HistoryEntry.entity_type == entity_type,
             HistoryEntry.entity_id == entity_id,

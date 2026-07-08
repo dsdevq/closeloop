@@ -1,6 +1,7 @@
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import type { Activity, Contact } from '../../types';
 import { SectionHeader } from '../../components/ui/SectionHeader';
+import { EntityTimeline } from '../../components/EntityTimeline';
 
 export function ActivityDetailView({
   activity,
@@ -58,6 +59,7 @@ export function ActivityDetailView({
           </div>
         )}
       </div>
+      <EntityTimeline entityType="activity" entityId={activity.id} />
     </>
   );
 }
