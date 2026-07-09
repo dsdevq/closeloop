@@ -2,7 +2,7 @@
 title: CloseLoop Domain Concepts
 status: living
 owner: "@dsdevq"
-last_reviewed: 2026-07-05
+last_reviewed: 2026-07-09
 tags: [domain, crm, automation]
 ---
 
@@ -553,3 +553,163 @@ Playwright tests are excluded because Chromium is not in the Python runtime imag
 | Build test deps into the production image | — | `requirements.txt` (adds pytest + httpx) is never baked into `requirements-prod.txt`; kept out of the shipped binary entirely |
 
 See `.devclaw/research/cicd-deploy.md` for the full reference CRM survey and the rationale behind each choice.
+
+---
+
+## v7 — Workflow Automation (Phase 2 complete: wiring + CRUD + UI)
+
+**Introduced:** 2026-07-09 (Phase 2 — after-save router wiring, CRUD API, frontend rule manager; `feat/wire-after-save-triggers-add-crud-api`)
+**Research basis:** `.devclaw/research/workflow-automation.md`
+
+This section synthesises the complete workflow automation engine now that Phase 2 is shipped. The concepts introduced piecemeal in §v1 (AutomationRule, After-Save trigger, Condition), §v2 (ScheduledTrigger), and §v4 (AutomationAction `notify`) are restated here as a unified Trigger → Condition → Action execution model and tied explicitly to the Notification system (§v3) and Activity Timeline (§v5).  §v1–§v4 remain authoritative for per-concept detail; this section documents the integration invariants and the Phase 2 additions (CRUD API, frontend).
+
+---
+
+### Unified execution model: Trigger → Condition → Action
+
+Every automation rule encodes exactly one "when X happens and Y is true, do Z" instruction.  The three phases of execution never change:
+
+```
+  Domain mutation
+       │
+       ▼
+  record_history()          ← history entry written (§v5)
+       │
+       ▼
+  create_notification()     ← hardcoded alert, if applicable (§v3)
+       │
+       ▼
+  execute_automation_rules()← user-defined rules evaluated here
+       │
+       ▼
+  db.commit()               ← single commit; all writes atomic
+```
+
+This call order is the invariant.  All three steps share the same SQLAlchemy session and commit.  `execute_automation_rules()` is never called before `record_history()`, ensuring the audit trail is always written regardless of what rules match.  If the commit fails, no notification, no history entry, and no automation side-effect is persisted.
+
+#### After-save rules
+
+For `trigger_type = "after_save"` rules, `execute_automation_rules(db, *, trigger_event, context, clk)` in `app/services/automations.py` is the evaluation entry point:
+
+1. Query `automation_rules` for rows where `trigger_event = ?` AND `trigger_type = "after_save"` AND `is_active = 1`.
+2. For each matching rule, parse `conditions_json` via `_parse_conditions()` — `ConditionsParseError` → skip (fail-closed).
+3. Call `evaluate_conditions(conditions, context)` — pure function, no DB I/O.  Returns `False` on first non-matching condition (AND-conjunctive).
+4. If conditions pass, dispatch to `_execute_action(db, rule, context, clk)`.
+5. Return a count of rules that fired (used in tests).
+
+The `context` dict is the entity snapshot at the moment of mutation.  It is built by the route handler from the entity fields after the mutation has been applied (post-`db.flush()`, pre-`db.commit()`).  Every context dict must include `actor_id`, `entity_type`, and `entity_id` — these are required by `_execute_notify_action` to populate the `Notification` row's navigation fields.
+
+#### Scheduled rules
+
+For `trigger_type = "scheduled"` rules, `run_scheduled_automations(db, *, clk)` is the execution path.  It is called exclusively by the `_scheduled_automations_loop()` asyncio task in `app/main.py` (FastAPI lifespan, polling every 60 s).  Unlike after-save rules, the scheduler owns its transactions and passes an empty `context = {}` (no entity snapshot).  See §v2 for the full CAS claim sequence and commit-guard invariant.
+
+---
+
+### After-save trigger sites (Phase 2 — all 8 wired)
+
+`execute_automation_rules()` is now called inline at every domain-mutation site, immediately after `record_history()` and any `create_notification()` call, before `db.commit()`:
+
+| trigger_event | Router + handler | Context keys included |
+|--------------|------------------|-----------------------|
+| `deal_created` | `deals.py` → `create_deal` | `deal_id`, `deal_title`, `stage`, `value`, `owner_id`, `actor_id`, `entity_type="deal"`, `entity_id` |
+| `deal_stage_changed` | `deals.py` → `update_deal_stage`, `update_deal` | `deal_id`, `deal_title`, `stage` (new), `old_stage`, `value`, `owner_id`, `actor_id`, `entity_type`, `entity_id` |
+| `deal_assigned` | `deals.py` → `update_deal` | `deal_id`, `deal_title`, `owner_id` (new), `old_owner_id`, `actor_id`, `entity_type`, `entity_id` |
+| `deal_updated` | `deals.py` → `update_deal` | `deal_id`, `deal_title`, `stage`, `value`, `owner_id`, `actor_id`, `entity_type`, `entity_id` |
+| `contact_created` | `contacts.py` → `create_contact` | `contact_id`, `contact_name`, `owner_id`, `actor_id`, `entity_type="contact"`, `entity_id` |
+| `contact_updated` | `contacts.py` → `update_contact` | `contact_id`, `contact_name`, `owner_id`, `actor_id`, `entity_type`, `entity_id` |
+| `activity_created` | `activities.py` → `create_activity` | `activity_id`, `activity_type`, `deal_id`, `contact_id`, `actor_id`, `entity_type="activity"`, `entity_id` |
+| `activity_completed` | `activities.py` → `complete_activity` | `activity_id`, `activity_title`, `deal_id`, `contact_id`, `actor_id`, `entity_type`, `entity_id` |
+
+The trigger event vocabulary is drawn from the same closed set as `_KIND_MAP` in `app/core/history.py` — no new event taxonomy is introduced.  `trigger_event` strings used for automation rules are a subset of the history kind strings (delete events are excluded because the entity is gone before the context dict could be populated).
+
+---
+
+### Integration with the Notification system (§v3)
+
+**There is no separate notification pipeline for automation-fired alerts.**  When a rule with `action_type = "notify"` matches:
+
+1. `_execute_action` dispatches to `_execute_notify_action` in `app/services/automations.py`.
+2. `_execute_notify_action` calls `create_notification(db, *, recipient_id, event, entity_type, entity_id, clk)` from `app/services/notifications.py` — the **same** DB-write entry point used by the hardcoded after-save triggers in `deals.py` and `activities.py`.
+3. The resulting `Notification` row lands in the `notifications` table with `kind = "automation"` and an `AutomationEvent` payload (see §v4 for the payload schema).
+4. The row is read by `GET /notifications` exactly like any other notification.
+5. Self-notification suppression (`actor_id == recipient_id`) is inherited from `create_notification()` — no additional guard is needed in the automation layer.
+
+**Integration invariants:**
+
+- `_execute_notify_action` is a caller of `create_notification()`, not an alternative implementation of it.
+- Automation-fired notifications are not distinguishable from hardcoded notifications at the DB or API level — only `kind = "automation"` and the `AutomationEvent` payload identify their origin.
+- The `notifications` table has exactly one write path: `create_notification()`.  The automation layer adds a new *caller* of that path, not a new path.
+
+**Reference:** Attio's "Notify a team member" automation action calls the same internal notification service as hardcoded triggers; Salesforce Custom Notifications are also created via the same `Notification` object regardless of whether the writer is a Flow, an Apex trigger, or platform code.
+
+---
+
+### Integration with the Activity Timeline (§v5)
+
+**There is no parallel history-capture mechanism for automation executions.**  The integration between automation rules and the activity timeline is positional: `execute_automation_rules()` is called at the same 8 trigger sites where `record_history()` is called, in the same transaction.
+
+Key integration properties:
+
+- **Automation rules do not write history entries.** The `record_history()` call captures the domain mutation (e.g., `deal_stage_changed`) regardless of whether any rule matches. The automation's side-effect (a notification) is not itself recorded in `history_entries`.
+- **Both are atomic with the mutation.** `record_history()` calls `db.add()` (no commit); `execute_automation_rules()` calls `_execute_notify_action` which calls `create_notification()` which calls `db.add()` (no commit). All writes are committed together via the single `db.commit()` at the end of the route handler.
+- **Automation failures do not suppress history.** If `execute_automation_rules()` raises an unexpected exception and the transaction rolls back, `record_history()` also rolls back — consistent with the general atomicity invariant. The converse also holds: a `ConditionsParseError` that causes a rule to be skipped does not prevent `record_history()` from writing.
+- **Call order is history-first.** `record_history()` is always called before `execute_automation_rules()`. If a handler does not call `record_history()` (e.g., delete events, which snapshot fields before `db.delete()`), `execute_automation_rules()` is also not called at that site — delete events are not in the trigger event vocabulary.
+
+**Reference:** Salesforce Record-Triggered Flows fire after the `FieldHistory` rows are written in the same transaction; the audit trail is populated unconditionally before automation actions run.
+
+---
+
+### CRUD API (`app/routers/automation_rules.py`)
+
+Rules are managed via a REST API restricted to admin and manager roles (`_require_admin_or_manager`, same pattern as `app/routers/pipeline.py`):
+
+| Method | Path | Status | Description |
+|--------|------|--------|-------------|
+| GET | `/automation-rules` | 200 | List all rules, ordered by `created_at DESC`. |
+| POST | `/automation-rules` | 201 | Create a rule. Validates `trigger_type`, `trigger_event`, `action_type`, condition ops, `schedule_config_json`. HTTP 422 for all semantic failures (ADR-0002). |
+| GET | `/automation-rules/{id}` | 200 | Get a single rule by ID. 404 if not found. |
+| PATCH | `/automation-rules/{id}` | 200 | Update `name`, `trigger_event`, `conditions_json`, `action_config_json`, `schedule_config_json`, `is_active`. 404 if not found. 422 for invalid values. |
+| DELETE | `/automation-rules/{id}` | 204 | Delete a rule. 404 if not found. `Response(status_code=204)` (ADR: use `Response`, not plain return). |
+
+**Validation contract (fail-closed, consistent with `app/services/automations.py`):**
+- `trigger_type` must be `"after_save"` or `"scheduled"`.
+- `trigger_event` must be in the known event vocabulary for `after_save` rules; empty for `scheduled` rules.
+- `action_type` must be in `_KNOWN_ACTION_TYPES` (`{"notify"}` as of Phase 2).
+- `conditions_json` conditions must use known ops (`eq`, `neq`, `in`) and include `field` and `value` keys.
+- `action_config_json` is validated via `_parse_notify_config` for `notify` action type.
+- `schedule_config_json` is validated via `_parse_schedule_config` for `scheduled` rules.
+
+This router is for managing rule *definitions* only — it does not trigger rule execution. Rule execution is performed exclusively by the after-save wiring in route handlers and by `run_scheduled_automations()` called from the asyncio poller.
+
+---
+
+### Frontend (`frontend/src/features/automations/AutomationRulesView.tsx`)
+
+`AutomationRulesView` is a self-contained form-based admin panel: lists existing rules, creates new rules via an inline form, toggles `is_active`, and deletes rules. It is visible only when the authenticated user has `role = "admin"` or `role = "manager"`. Wired as the `"automations"` tab in `AppHeader` and `App.tsx`. Uses `apiFetch` (not bare `fetch`; ADR requirement).
+
+---
+
+### Reference CRM patterns (Phase 2 additions)
+
+| Pattern | Source | Decision |
+|---------|--------|----------|
+| CRUD admin UI, not a visual canvas | Zoho Workflow Rules (form-based UI) | Borrowed — `AutomationRulesView` is a form-based list + create panel; visual canvas (Salesforce Flow Builder, HubSpot workflow canvas) rejected as expensive and out of scope |
+| Single-object-type scope per rule via trigger_event | HubSpot (each workflow scoped to one object type) | Borrowed implicitly — `trigger_event` string carries the entity type (`deal_stage_changed` can only fire from `deals.py`); explicit `entity_type` column deferred |
+| `is_active` toggle | HubSpot, Pipedrive | Borrowed — admin UI surfaces the toggle; inactive rules are excluded at the DB query level |
+| Admin/manager-only write access | HubSpot (admin-managed workflows) | Borrowed — `_require_admin_or_manager` guards all write endpoints; rep role cannot manage rules |
+| CRUD validation at rule creation time | Zoho (workflow rule editor validates config before save) | Borrowed — `POST /automation-rules` validates all config at write time, so a malformed rule never reaches the evaluator |
+| Notify action as internal service call, not a public endpoint | HubSpot, Attio | Borrowed — `_execute_notify_action` calls `create_notification()` internally; there is no `POST /automation-rules/trigger` or `POST /notifications` public endpoint |
+| Multi-action sequences within a single rule | HubSpot, Pipedrive, Zoho | Rejected — one action per rule; multiple outcomes compose via multiple rules, no per-rule branching or sequencing |
+| Rule execution log (`automation_executions` table) | HubSpot (workflow enrollment history), Salesforce | Deferred — a future `automation_executions` table with `fired_at`, `outcome`, and error details is planned but not implemented; no execution log exists in Phase 2 |
+| `create_activity` action type | Pipedrive ("Create activity" automation action), Zoho ("Create task" action) | Deferred — planned as the next action type; not yet implemented; guard against recursion required (automated Activity must suppress its own `activity_created` trigger) |
+
+**Rejected patterns affecting integration specifically:**
+
+| Pattern | Source | Why rejected |
+|---------|--------|-------------|
+| ORM hooks (`after_flush` / `after_commit`) as trigger mechanism | SQLAlchemy | Creates a hidden second trigger path alongside the explicit inline calls; contradicts ADR-0026 and the established After-Save hook discipline; trigger sites must be explicit and traceable |
+| Background scanner for after-save trigger detection | Zoho, general pattern | No background worker machinery; scanner would create a parallel event pipeline competing with the inline hook; same rejection rationale as `activity-timeline.md §3` and ADR-0026 §Rejected alternatives |
+| Separate notification table for automation-fired alerts | — | Rejected by design: `create_notification()` is the single write path; automation is a new caller, not a new path; separate table would create two notification stores with divergent read APIs |
+| Webhook / HTTP action dispatched from `_execute_action` | Pipedrive, HubSpot, Zoho, Attio | ADR-0010 prohibits runtime outbound network calls |
+
+See `.devclaw/research/workflow-automation.md` for the full reference CRM survey and the complete borrowed-vs-rejected rationale behind the rule model and condition evaluator design.
