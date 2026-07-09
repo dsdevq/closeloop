@@ -2,7 +2,7 @@
 title: CloseLoop Domain Concepts
 status: living
 owner: "@dsdevq"
-last_reviewed: 2026-07-05
+last_reviewed: 2026-07-09
 tags: [domain, crm, automation]
 ---
 
