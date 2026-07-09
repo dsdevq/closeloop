@@ -9,8 +9,8 @@
 #   2. app source copy                — fast; re-runs on every code edit
 #
 # To pin base images to immutable digests for production CI, run:
-#   docker pull node:20.18.0-alpine3.21
-#   docker inspect node:20.18.0-alpine3.21 --format '{{index .RepoDigests 0}}'
+#   docker pull node:20.18.3-alpine3.21
+#   docker inspect node:20.18.3-alpine3.21 --format '{{index .RepoDigests 0}}'
 #   docker pull python:3.12.9-slim-bookworm
 #   docker inspect python:3.12.9-slim-bookworm --format '{{index .RepoDigests 0}}'
 # Then append @sha256:<digest> to each FROM line.
@@ -18,7 +18,7 @@
 
 # ── Stage 1: Vite / Node build ────────────────────────────────────
 # Exact release tag — version bumps are intentional, not automatic.
-FROM node:20.18.0-alpine3.21 AS frontend-build
+FROM node:20.18.3-alpine3.21 AS frontend-build
 WORKDIR /src
 
 # Copy manifests first; npm ci is cached separately from source.
