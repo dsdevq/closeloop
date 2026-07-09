@@ -19,12 +19,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Python tests
+      - name: Python unit tests
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install --quiet --upgrade pip
           "$RUNNER_TEMP/venv/bin/pip" install --quiet -r requirements.txt
-          "$RUNNER_TEMP/venv/bin/python" -m pytest -q
+          # The Playwright wrapper runs in the containerized e2e step below —
+          # the runner host cannot support a working Chromium without root
+          # (user-space lib extraction lets the browser start but silently
+          # breaks its input pipeline: fill/type produce empty fields).
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -q --ignore=tests/test_e2e_playwright.py
+
+      # Full browser e2e inside the official Playwright image: correct
+      # system deps without root on the host. Keep the image tag in sync
+      # with the @playwright/test version in package-lock.json.
+      - name: Playwright e2e (container)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/work" -w /work \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            mcr.microsoft.com/playwright:v1.61.1-noble \
+            bash -c "trap 'chown -R \$HOST_UID:\$HOST_GID /work' EXIT \
+              && apt-get update -qq >/dev/null && apt-get install -y -qq python3-venv >/dev/null \
+              && python3 -m venv /tmp/venv && /tmp/venv/bin/pip install -q -r requirements.txt \
+              && export PATH=/tmp/venv/bin:\$PATH \
+              && npm ci --silent \
+              && npx playwright test --reporter=list"
+
+      # Playwright saves a screenshot + ARIA snapshot per failed test into
+      # test-results/. Surfacing them is the only way to see what the page
+      # actually looked like on the runner.
+      - name: Upload e2e failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Frontend typecheck
         run: |
