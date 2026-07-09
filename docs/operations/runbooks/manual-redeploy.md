@@ -13,7 +13,7 @@ estimated-duration: 3 minutes
 ## When to run this
 
 - The GitHub Actions deploy job failed and you want the latest `main` running now.
-- The Actions workflow is stuck in `BuildFailed` state (see [../../guides/deploy.md](../../guides/deploy.md#known-issue-2026-07-01)) — until that's unstuck, this is the primary deploy path.
+- The Actions `deploy` job failed or is reporting `startup_failure` — see the runner caveat in [../../guides/deploy.md](../../guides/deploy.md#manual-redeploy); until runner health is confirmed, this runbook is the primary deploy path.
 - You want to test a build change on the VPS before merging.
 
 ## Prerequisites
