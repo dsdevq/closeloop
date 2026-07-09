@@ -60,6 +60,8 @@ Historically devclaw spun ONE throwaway container per goal — five simultaneous
 
 Documented in [operations/runbooks/manual-redeploy.md](../operations/runbooks/manual-redeploy.md). Use this when the deploy job fails or when you want to test a build change on the VPS before merging.
 
+> **Runner caveat (2026-07-01, status unverified):** The self-hosted runner on `lifekit-vps` experienced a `startup_failure` regression (workflow ID 305245282) — every push registered as `startup_failure` even with a valid workflow YAML. Root cause: runner infrastructure, not workflow code. If you see jobs failing with `startup_failure`, reset or re-register the runner via the GitHub Actions tab on `dsdevq/closeloop`; this is an infrastructure issue, not a bug in the workflow YAML. Until green runner status is confirmed, treat the manual-redeploy runbook as the primary deploy path.
+
 ## Local build/run
 
 ```bash
