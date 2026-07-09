@@ -21,6 +21,7 @@ from app.core.velocity import is_deal_rotting, stage_sla_days, time_in_stage_hou
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Contact, Deal, PipelineStage, StageTransition, User
+from app.services.automations import execute_automation_rules
 from app.services.history import record_history
 from app.services.notifications import create_notification
 
@@ -121,6 +122,22 @@ def create_deal(
             deal_title=deal.title,
             actor_id=current_user.id,
         ),
+        clk=clk,
+    )
+
+    execute_automation_rules(
+        db,
+        trigger_event="deal_created",
+        context={
+            "deal_id": deal.id,
+            "deal_title": deal.title,
+            "stage": deal.stage,
+            "value": deal.value,
+            "owner_id": deal.owner_id,
+            "actor_id": current_user.id,
+            "entity_type": "deal",
+            "entity_id": deal.id,
+        },
         clk=clk,
     )
 
@@ -382,6 +399,24 @@ def update_deal_stage(
             clk=clk,
         )
 
+    if body.stage != old_stage:
+        execute_automation_rules(
+            db,
+            trigger_event="deal_stage_changed",
+            context={
+                "deal_id": deal.id,
+                "deal_title": deal.title,
+                "stage": deal.stage,
+                "old_stage": old_stage,
+                "value": deal.value,
+                "owner_id": deal.owner_id,
+                "actor_id": current_user.id,
+                "entity_type": "deal",
+                "entity_id": deal.id,
+            },
+            clk=clk,
+        )
+
     db.commit()
     db.refresh(deal)
     return _to_out(deal)
@@ -515,6 +550,57 @@ def update_deal(
                 deal_title=deal.title,
                 actor_id=current_user.id,
             ),
+            clk=clk,
+        )
+
+    if stage_id_in_update and deal.stage != old_stage:
+        execute_automation_rules(
+            db,
+            trigger_event="deal_stage_changed",
+            context={
+                "deal_id": deal.id,
+                "deal_title": deal.title,
+                "stage": deal.stage,
+                "old_stage": old_stage,
+                "value": deal.value,
+                "owner_id": deal.owner_id,
+                "actor_id": current_user.id,
+                "entity_type": "deal",
+                "entity_id": deal.id,
+            },
+            clk=clk,
+        )
+
+    if new_owner_id and new_owner_id != old_owner_id:
+        execute_automation_rules(
+            db,
+            trigger_event="deal_assigned",
+            context={
+                "deal_id": deal.id,
+                "deal_title": deal.title,
+                "owner_id": new_owner_id,
+                "old_owner_id": old_owner_id,
+                "actor_id": current_user.id,
+                "entity_type": "deal",
+                "entity_id": deal.id,
+            },
+            clk=clk,
+        )
+
+    if non_structural_updates:
+        execute_automation_rules(
+            db,
+            trigger_event="deal_updated",
+            context={
+                "deal_id": deal.id,
+                "deal_title": deal.title,
+                "stage": deal.stage,
+                "value": deal.value,
+                "owner_id": deal.owner_id,
+                "actor_id": current_user.id,
+                "entity_type": "deal",
+                "entity_id": deal.id,
+            },
             clk=clk,
         )
 
