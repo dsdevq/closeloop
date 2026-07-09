@@ -1,4 +1,4 @@
-export type Tab = 'pipeline' | 'contacts' | 'accounts' | 'today' | 'stats' | 'activities' | 'insights';
+export type Tab = 'pipeline' | 'contacts' | 'accounts' | 'today' | 'stats' | 'activities' | 'insights' | 'automations';
 
 export type User = {
   id?: number;
@@ -125,6 +125,20 @@ export type InsightsCohortSource = {
   win_rate: number;
 };
 export type InsightsCohorts = Record<string, InsightsCohortSource>;
+
+export type AutomationRule = {
+  id: number;
+  name: string;
+  trigger_type: 'after_save' | 'scheduled';
+  trigger_event: string;
+  conditions_json: string | null;
+  action_type: string;
+  action_config_json: string;
+  schedule_config_json: string | null;
+  last_triggered_at: string | null;
+  is_active: boolean;
+  created_at: string;
+};
 
 export type HistoryEntry = {
   id: number;

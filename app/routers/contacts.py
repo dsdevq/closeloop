@@ -14,6 +14,7 @@ from app.core.lead_score import compute_lead_score
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Activity, Contact, Deal, User
+from app.services.automations import execute_automation_rules
 from app.services.history import record_history
 
 router = APIRouter(prefix="/contacts")
@@ -99,6 +100,20 @@ def create_contact(
             contact_name=contact.name,
             actor_id=current_user.id,
         ),
+        clk=clk,
+    )
+
+    execute_automation_rules(
+        db,
+        trigger_event="contact_created",
+        context={
+            "contact_id": contact.id,
+            "contact_name": contact.name,
+            "owner_id": contact.owner_id,
+            "actor_id": current_user.id,
+            "entity_type": "contact",
+            "entity_id": contact.id,
+        },
         clk=clk,
     )
 
@@ -257,6 +272,20 @@ def update_contact(
                 contact_name=contact.name,
                 actor_id=current_user.id,
             ),
+            clk=clk,
+        )
+
+        execute_automation_rules(
+            db,
+            trigger_event="contact_updated",
+            context={
+                "contact_id": contact.id,
+                "contact_name": contact.name,
+                "owner_id": contact.owner_id,
+                "actor_id": current_user.id,
+                "entity_type": "contact",
+                "entity_id": contact.id,
+            },
             clk=clk,
         )
 

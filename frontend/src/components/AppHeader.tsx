@@ -1,4 +1,4 @@
-import { BarChart3, Bell, Building2, Calendar, ContactRound, LogOut, RefreshCw, TrendingUp, UserRound } from 'lucide-react';
+import { BarChart3, Bell, Building2, Calendar, ContactRound, LogOut, RefreshCw, TrendingUp, UserRound, Zap } from 'lucide-react';
 import type { Tab, User } from '../types';
 import { NotificationCenter } from '../features/notifications/NotificationCenter';
 
@@ -43,6 +43,20 @@ export function AppHeader({ activeTab, onTabChange, user, onLogout, isAuthentica
               {label}
             </button>
           ))}
+          {(user.role === 'admin' || user.role === 'manager') && (
+            <button
+              className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm transition ${
+                activeTab === 'automations'
+                  ? 'bg-white text-slate-950'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+              onClick={() => onTabChange('automations')}
+              type="button"
+            >
+              <Zap size={16} aria-hidden="true" />
+              Automations
+            </button>
+          )}
         </nav>
 
         <div className="ml-auto flex items-center gap-2">

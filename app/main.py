@@ -17,6 +17,7 @@ from app.database import Base, SessionLocal, engine
 from app.models import Activity, Contact, Deal, PipelineStage, User
 from app.services.automations import run_scheduled_automations
 from app.routers.accounts import router as accounts_router
+from app.routers.automation_rules import router as automation_rules_router
 from app.routers.activities import router as activities_router
 from app.routers.auth import router as auth_router
 from app.routers.contacts import router as contacts_router
@@ -249,5 +250,6 @@ app.include_router(saved_views_router)
 app.include_router(outbox_router)
 app.include_router(stats_router)
 app.include_router(tags_router)
+app.include_router(automation_rules_router)
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
