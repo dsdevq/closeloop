@@ -28,21 +28,34 @@ jobs:
       # runner is persistent).
       - name: Chromium host libs (no-root)
         run: |
-          MARKER="$HOME/lib/.chromium-deps-v1"
-          [ -f "$MARKER" ] && exit 0
-          mkdir -p "$HOME/lib"
-          tmp=$(mktemp -d) && cd "$tmp"
-          for pkg in libnspr4 libnss3 libdbus-1-3 libatk1.0-0 libatk1.0-0t64 \
-                     libatk-bridge2.0-0 libatk-bridge2.0-0t64 libcups2 libcups2t64 \
-                     libatspi2.0-0 libatspi2.0-0t64 libxcomposite1 libxdamage1 \
-                     libxfixes3 libxrandr2 libgbm1 libxkbcommon0 libasound2 \
-                     libasound2t64 libpango-1.0-0 libcairo2 libwayland-client0; do
-            apt-get download "$pkg" 2>/dev/null || echo "skip: $pkg"
-          done
-          mkdir -p x
-          for deb in *.deb; do [ -e "$deb" ] && dpkg-deb -x "$deb" x; done
-          find x -name '*.so*' -exec cp -n {} "$HOME/lib/" \;
-          touch "$MARKER"
+          MARKER="$HOME/lib/.chromium-deps-v2"
+          if [ ! -f "$MARKER" ]; then
+            mkdir -p "$HOME/lib"
+            tmp=$(mktemp -d) && cd "$tmp"
+            for pkg in libnspr4 libnss3 libdbus-1-3 libatk1.0-0 libatk1.0-0t64 \
+                       libatk-bridge2.0-0 libatk-bridge2.0-0t64 libcups2 libcups2t64 \
+                       libatspi2.0-0 libatspi2.0-0t64 libxcomposite1 libxdamage1 \
+                       libxfixes3 libxrandr2 libgbm1 libxkbcommon0 libasound2 \
+                       libasound2t64 libpango-1.0-0 libcairo2 libwayland-client0 \
+                       libx11-6 libx11-xcb1 libxcb1 libxext6 libxrender1 libxi6 \
+                       libxtst6 libxcursor1 libxss1 libdrm2 libexpat1 \
+                       libglib2.0-0 libglib2.0-0t64 libfontconfig1 libfreetype6 \
+                       libharfbuzz0b libpangocairo-1.0-0 libpangoft2-1.0-0 \
+                       libpixman-1-0 libpng16-16 libpng16-16t64 libjpeg62-turbo \
+                       libwayland-egl1 libwayland-server0 libepoxy0 libgraphite2-3; do
+              apt-get download "$pkg" 2>/dev/null || echo "skip: $pkg"
+            done
+            mkdir -p x
+            for deb in *.deb; do [ -e "$deb" ] && dpkg-deb -x "$deb" x; done
+            find x -name '*.so*' -exec cp -n {} "$HOME/lib/" \;
+            touch "$MARKER"
+          fi
+          # Self-check: report anything the headless shell still can't resolve,
+          # so a failure names the missing package instead of a launch timeout.
+          SHELL_BIN=$(find "$HOME/.cache/ms-playwright" -name headless_shell -type f 2>/dev/null | head -1)
+          if [ -n "$SHELL_BIN" ]; then
+            LD_LIBRARY_PATH="$HOME/lib" ldd "$SHELL_BIN" | grep "not found" || echo "all shared libs resolved"
+          fi
 
       - name: Python tests
         run: |
