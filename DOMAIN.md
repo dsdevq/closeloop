@@ -462,3 +462,94 @@ No `POST /history` — entries are written exclusively by trigger wiring.  This 
 | Field-level granularity (one row per changed field) | Salesforce Field History Tracking | Deferred to a future slice; event-level entries are sufficient for slices 1–2 and 4 |
 
 See `.devclaw/research/activity-timeline.md` for the full reference CRM survey and the slice-by-slice build plan.
+
+---
+
+## v6 — CI/CD & Deploy
+
+**Introduced:** 2026-07-08 (ESLint gate + deploy documentation; PR on `feat/add-eslint-gate-document-deploy`)
+**Research basis:** `.devclaw/research/cicd-deploy.md`
+
+### ContainerImage
+
+CloseLoop is packaged as a **multi-stage Docker image** built by the `Dockerfile` at the repo root. Two stages:
+
+| Stage | Base image | Purpose |
+|-------|-----------|---------|
+| `frontend-build` | `node:20.18.0-alpine3.21` | `npm ci` + `npm run build` (`tsc -b && vite build`). Writes `app/static/` — the compiled Vite bundle. |
+| `runtime` | `python:3.12.9-slim-bookworm` | Installs `requirements-prod.txt` (6 packages only; pytest + httpx excluded). Copies `app/` from the workspace and `app/static/` from `frontend-build`. Runs gunicorn + UvicornWorker. |
+
+Key properties:
+
+- **Non-root user** (`appuser`, UID/GID 1001) — avoids collision with the VPS host `lifekit` user (UID 1000). `/app` and `/data` are `chown`'d before `USER appuser`.
+- **Layer ordering** — `COPY requirements-prod.txt` + `RUN pip install` precedes `COPY app ./app`; source-only edits never bust the slow dependency cache.
+- **`HEALTHCHECK`** — `curl -fsS http://127.0.0.1:${PORT:-8000}/health`; Docker marks the container unhealthy if the app cannot respond within 5 s (3 retries, 30 s interval, 15 s start period).
+- **Loopback binding** — the `docker run` command pins `-p 127.0.0.1:${PORT}:${PORT}`; Tailscale (`tailscale serve --https=8372`) serves the external surface.
+- **`DATABASE_URL`** defaults to `sqlite:////data/closeloop.db`. The `/data` path maps to the `closeloop-data` named volume — the database survives a container replacement.
+- **Dev deps excluded** — `requirements.txt` (adds pytest + httpx) is never baked into the image. The production image carries only `requirements-prod.txt`. Test-time access is via volume-mount in `ci-docker.yml`.
+
+### ContainerGate
+
+`.github/workflows/ci-docker.yml` is a separate CI job (runs on every PR and push) that validates the **exact binary that ships**, not just the Python source:
+
+1. Build `closeloop:<sha>` + `closeloop:test-cache` using `--cache-from closeloop:test-cache`.
+2. Volume-mount `tests/` and `requirements.txt` (excluded from the image by `.dockerignore`) into the built container.
+3. Run `python -m pytest -q --ignore=tests/test_e2e_playwright.py tests/` inside the container as root (acceptable for a throwaway test container; the image still runs as `appuser` in production).
+4. Remove the `<sha>` tag; keep `:test-cache` for the next run.
+
+Playwright tests are excluded because Chromium is not in the Python runtime image — those run in the `ci.yml` test job against the source tree. The `:test-cache` tag is kept separate from `:latest` (the deploy tag) and they are never mixed.
+
+### DeployContract
+
+**Trigger:** every push to `main` runs the `deploy` job in `.github/workflows/ci.yml`, gated on the `test` job passing. The `test` job runs: pytest → `npm run typecheck` (`tsc -b`) → `npm run lint` (ESLint).
+
+**Container-swap sequence:**
+
+1. **Record** the running container's image SHA (`docker inspect closeloop --format '{{.Image}}'`). Empty string on first deploy.
+2. **Build** `closeloop:<commit-sha>` + `closeloop:latest` using `--cache-from closeloop:latest` — before stopping the old container, keeping the outage window to milliseconds.
+3. **Swap** — `docker rm -f closeloop || true` then `docker run -d --name closeloop --restart unless-stopped -p "127.0.0.1:${PORT}:${PORT}" -e PORT -v closeloop-data:/data closeloop:<sha>`.
+4. **Verify** — poll `GET http://127.0.0.1:${PORT}/health` up to 30 × 2 s. Exit 0 on first success; exit 1 if never healthy.
+5. **Rollback** — if step 4 fails and step 1 captured a prior SHA: restore the prior container from that SHA and re-pin `:latest`.
+6. **Prune** — `docker image prune -f` always runs (`if: always()`).
+
+**Concurrency:** `group: deploy-closeloop, cancel-in-progress: false` — concurrent deploys queue rather than cancel; a mid-swap cancellation would leave the service down.
+
+**Ownership boundary:** devclaw's `_project_owns_its_deploy` check (in `devclaw/goal/tick.py`) detects the `Dockerfile` at the workspace root and skips its own auto-deploy. One merge → one deploy from closeloop's own CI. No devclaw-spun throwaway containers accumulate on the VPS.
+
+**Invariants callers can rely on:**
+
+- `closeloop-data:/data` is preserved across every swap — the database never loses data on deploy.
+- `GET /health` is the stable health probe surface: `{"status": "ok", "db": "ok", "version": "...", "timestamp": "..."}`.
+- `:latest` always reflects the currently running container after a successful deploy.
+- Automatic rollback requires a prior successful deploy (prior SHA must be non-empty).
+
+### Reference CRM analogues
+
+**Borrowed:**
+
+| Pattern | Source | How used in CloseLoop |
+|---------|--------|----------------------|
+| Test inside the production container | HubSpot (CI job runs the same image that ships) | `ci-docker.yml` volume-mounts `tests/` + `requirements.txt` into the built image; pytest runs inside |
+| Build before stop | HubSpot, Pipedrive | `docker build` precedes `docker rm -f` — the old container keeps serving during the image build |
+| SHA-tagged image for rollback | Pipedrive (ECR + per-commit tag) | Each deploy produces `closeloop:<commit-sha>`; prior SHA is snapshotted before building; used to restore if health check fails |
+| Singleton container swap | Attio (single-tenant VPS, stop/start pattern) | `docker rm -f closeloop \|\| true` + `docker run -d --name closeloop` — atomic swap via named container |
+| Health-check gate before declaring success | Attio, HubSpot (readiness probe) | Poll `GET /health` 30 × 2 s; declare failure and trigger rollback if never healthy |
+| Prune dangling images after swap | Attio, Zoho | `docker image prune -f` on `if: always()` |
+| Named volume for data persistence | Zoho (Docker Compose named volume) | `closeloop-data:/data` survives every container replacement |
+| `--restart unless-stopped` | Zoho Compose | Container auto-restarts after VPS reboots without a compose daemon |
+| `--cache-from :latest` for layer reuse | HubSpot (registry cache), Pipedrive (ECR cache) | `--cache-from closeloop:latest` (deploy job), `--cache-from closeloop:test-cache` (container gate) |
+
+**Rejected:**
+
+| Pattern | Source | Rejected and why |
+|---------|--------|-----------------|
+| Kubernetes + Helm rolling deploy | HubSpot (internal k8s) | Single-VPS deployment; no cluster infrastructure |
+| AWS ECS task-definition swap | Pipedrive | No external AWS infrastructure; images built and stored on the runner VPS |
+| Docker Compose | Zoho self-hosted tier | No multi-container dependency; direct `docker run` is simpler and matches the devclaw pattern |
+| Blue/green with a load balancer | Salesforce/HubSpot production | Overkill for a singleton deployment; brief outage during swap is acceptable |
+| Per-PR ephemeral review containers | Salesforce (Heroku review apps) | No infra for per-PR containers on `lifekit-vps` |
+| Container registry push (ECR / GCR) | Pipedrive, HubSpot | No external registry; images built and stored on the runner VPS |
+| ESLint inside the container or Dockerfile | — | ESLint is a dev-time Node tool; the Python runtime image has no Node. Runs in the `test` job against the source tree |
+| Build test deps into the production image | — | `requirements.txt` (adds pytest + httpx) is never baked into `requirements-prod.txt`; kept out of the shipped binary entirely |
+
+See `.devclaw/research/cicd-deploy.md` for the full reference CRM survey and the rationale behind each choice.
