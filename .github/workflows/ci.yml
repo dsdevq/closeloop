@@ -19,56 +19,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The runner user (lifekit) has no sudo, so Chromium's missing host
-      # libraries can't be apt-installed system-wide. Same no-root approach
-      # as scripts/verify.sh's libXfixes fallback, generalized: download the
-      # .debs and extract their shared objects into ~/lib, which
-      # playwright.config.ts already prepends to LD_LIBRARY_PATH.
-      # Idempotent — the marker file skips this on subsequent runs (the
-      # runner is persistent).
-      - name: Chromium host libs (no-root)
-        run: |
-          MARKER="$HOME/lib/.chromium-deps-v2"
-          if [ ! -f "$MARKER" ]; then
-            mkdir -p "$HOME/lib"
-            tmp=$(mktemp -d) && cd "$tmp"
-            for pkg in libnspr4 libnss3 libdbus-1-3 libatk1.0-0 libatk1.0-0t64 \
-                       libatk-bridge2.0-0 libatk-bridge2.0-0t64 libcups2 libcups2t64 \
-                       libatspi2.0-0 libatspi2.0-0t64 libxcomposite1 libxdamage1 \
-                       libxfixes3 libxrandr2 libgbm1 libxkbcommon0 libasound2 \
-                       libasound2t64 libpango-1.0-0 libcairo2 libwayland-client0 \
-                       libx11-6 libx11-xcb1 libxcb1 libxext6 libxrender1 libxi6 \
-                       libxtst6 libxcursor1 libxss1 libdrm2 libexpat1 \
-                       libglib2.0-0 libglib2.0-0t64 libfontconfig1 libfreetype6 \
-                       libharfbuzz0b libpangocairo-1.0-0 libpangoft2-1.0-0 \
-                       libpixman-1-0 libpng16-16 libpng16-16t64 libjpeg62-turbo \
-                       libwayland-egl1 libwayland-server0 libepoxy0 libgraphite2-3; do
-              apt-get download "$pkg" 2>/dev/null || echo "skip: $pkg"
-            done
-            mkdir -p x
-            for deb in *.deb; do [ -e "$deb" ] && dpkg-deb -x "$deb" x; done
-            find x -name '*.so*' -exec cp -n {} "$HOME/lib/" \;
-            touch "$MARKER"
-          fi
-          # Self-check: report anything the headless shell still can't resolve,
-          # so a failure names the missing package instead of a launch timeout.
-          SHELL_BIN=$(find "$HOME/.cache/ms-playwright" -name headless_shell -type f 2>/dev/null | head -1)
-          if [ -n "$SHELL_BIN" ]; then
-            LD_LIBRARY_PATH="$HOME/lib" ldd "$SHELL_BIN" | grep "not found" || echo "all shared libs resolved"
-          fi
-
-      - name: Python tests
+      - name: Python unit tests
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install --quiet --upgrade pip
           "$RUNNER_TEMP/venv/bin/pip" install --quiet -r requirements.txt
-          # venv on PATH: the Playwright e2e wrapper's webServer spawns a bare
-          # `uvicorn`, which must resolve to the venv's binary (exit 127 otherwise).
-          export PATH="$RUNNER_TEMP/venv/bin:$PATH"
-          # Host-requirement validation would refuse to launch Chromium because
-          # the libs live in ~/lib, not system paths (see step above).
-          export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1
-          python -m pytest -q
+          # The Playwright wrapper runs in the containerized e2e step below —
+          # the runner host cannot support a working Chromium without root
+          # (user-space lib extraction lets the browser start but silently
+          # breaks its input pipeline: fill/type produce empty fields).
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -q --ignore=tests/test_e2e_playwright.py
+
+      # Full browser e2e inside the official Playwright image: correct
+      # system deps without root on the host. Keep the image tag in sync
+      # with the @playwright/test version in package-lock.json.
+      - name: Playwright e2e (container)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/work" -w /work \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            mcr.microsoft.com/playwright:v1.61.1-noble \
+            bash -c "trap 'chown -R \$HOST_UID:\$HOST_GID /work' EXIT \
+              && apt-get update -qq >/dev/null && apt-get install -y -qq python3-venv >/dev/null \
+              && python3 -m venv /tmp/venv && /tmp/venv/bin/pip install -q -r requirements.txt \
+              && export PATH=/tmp/venv/bin:\$PATH \
+              && npm ci --silent \
+              && npx playwright test --reporter=list"
 
       # Playwright saves a screenshot + ARIA snapshot per failed test into
       # test-results/. Surfacing them is the only way to see what the page
