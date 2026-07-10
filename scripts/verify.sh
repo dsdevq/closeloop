@@ -22,7 +22,16 @@ npm ci
 #   1. Extracting libXfixes.so.3 from the Debian package without root.
 #   2. Installing Chromium with host-requirement validation skipped.
 # playwright.config.ts already prepends ~/lib to LD_LIBRARY_PATH.
-if ! npx playwright install --with-deps chromium 2>&1; then
+#
+# NOTE: npx playwright install --with-deps exits 0 even when the privileged
+# dep-install step fails (ARM64 no-root: "su: Authentication failure").
+# We capture the output and check for that signal independently of exit code.
+set +e
+_pw_out=$(npx playwright install --with-deps chromium 2>&1)
+_pw_ec=$?
+set -e
+printf '%s\n' "$_pw_out"
+if [ "$_pw_ec" -ne 0 ] || printf '%s' "$_pw_out" | grep -q "Authentication failure"; then
     echo "[verify.sh] --with-deps install failed; applying ARM64 no-root workaround..." >&2
     if [ ! -f "${HOME}/lib/libXfixes.so.3" ]; then
         curl -fsSL "http://deb.debian.org/debian/pool/main/libx/libxfixes/libxfixes3_6.0.0-2+b5_arm64.deb" \
