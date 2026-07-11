@@ -4,6 +4,13 @@ __pycache__/
 *.egg-info/
 .eggs/
 dist/
+
+# Vite build output — frontend/vite.config.ts writes to ../app/static; the
+# Dockerfile builds it in-image (stage 1). NEVER commit bundles: they rot
+# against frontend/ source and pollute every diff. .gitkeep keeps the dir
+# present so app/main.py's StaticFiles mount doesn't crash on fresh clones.
+app/static/*
+!app/static/.gitkeep
 build/
 .venv/
 venv/

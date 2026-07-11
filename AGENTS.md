@@ -33,7 +33,7 @@ A self-contained CRM: **Python + FastAPI + SQLite** backend, **React + Vite + Ta
 ## What lives WHERE
 
 - `app/` — FastAPI backend. `app/core/` = pure functions, no I/O, no globals ([ADR-0001](docs/architecture/decisions/0001-pure-core-module.md)).
-- `frontend/` — React + Vite source. Build outputs to `app/static/`.
+- `frontend/` — React + Vite source. Build outputs to `app/static/`. **`app/static/` is generated and gitignored — never edit or commit anything in it**; to get a UI locally run `cd frontend && npm ci && npm run build` (the Docker image builds it in-stage-1 automatically).
 - `tests/` — pytest suite (pure unit + API integration).
 - `e2e/` — Playwright suite. One `.spec.ts` per feature area.
 - `scripts/verify.sh` — the PR gate (pytest + Playwright + typecheck).
