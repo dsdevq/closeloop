@@ -45,7 +45,11 @@ def _install_playwright_browser() -> None:
         capture_output=True,
         text=True,
     )
-    if result.returncode == 0:
+    # npx playwright install --with-deps exits 0 even when the privileged
+    # dep-install step fails (ARM64 no-root: "su: Authentication failure").
+    # Check the captured output for that signal independently of exit code.
+    combined = result.stdout + result.stderr
+    if result.returncode == 0 and "Authentication failure" not in combined:
         return
 
     # ARM64 no-root fallback: extract libXfixes.so.3 from the Debian package
